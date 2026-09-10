@@ -6,6 +6,8 @@ Serve `dist/` through a local HTTP server. The ES modules do not run by opening 
 
 Run regression checks with `node tests/test-nets.mjs`.
 
+Run realism checks with `node tests/test-realism.mjs`. The `dist/realism/` modules implement grip-driven bat motion, first-person body and neck look, configurable training pace, crowd LOD/reactions, and synthesized stadium audio. Hold right mouse or toggle L to look; C recenters. The in-game speed panel changes the next release, never an airborne ball.
+
 Run coarse fitting with `node tools/calibrate.mjs measurements.json`. The input must contain a release contract and at least three increasing timestamped position measurements; see the script's validation and `dist/physics.js`. Synthetic test data is not evidence of real-world accuracy.
 
 The browser implementation uses a 1 ms fixed-step solver with explicit, uncalibrated priors. It is a nets vertical slice, not a complete official cricket match or the full research specification.

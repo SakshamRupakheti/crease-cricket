@@ -1,3 +1,4 @@
+import {buildWillowBat,createHuman} from './realism/PlayerBody.js';
 import {boot} from './play.js';
 import * as THREE from './three.module.js';
 const $=id=>document.getElementById(id), canvas=$('game');
@@ -26,14 +27,12 @@ for(let i=0;i<6;i++){let a=i*Math.PI/3+.2,x=Math.sin(a)*68,z=Math.cos(a)*68-10;c
 box(11,5,.15,white,0,2.7,-42);
 // Batch static architecture into instanced draws to keep mobile GPU overhead low.
 scene.updateMatrixWorld(true);const batches=new Map();scene.traverse(o=>{if(o.isMesh&&!o.isInstancedMesh&&o.geometry.type==='BoxGeometry'){const key=o.material.color.getHexString();if(!batches.has(key))batches.set(key,[]);batches.get(key).push(o);}});for(const list of batches.values()){const batch=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),list[0].material,list.length);list.forEach((o,i)=>{const p=o.geometry.parameters,m=o.matrixWorld.clone();m.scale(new THREE.Vector3(p.width,p.height,p.depth));batch.setMatrixAt(i,m);o.parent.remove(o);o.geometry.dispose();});batch.receiveShadow=true;batch.castShadow=true;scene.add(batch);}
-function person(x,z,scale=1){let g=new THREE.Group();g.position.set(x,0,z);g.scale.setScalar(scale);scene.add(g);let torso=box(.44,.65,.26,navy,0,1.16,0,g);const head=mesh(new THREE.SphereGeometry(.145,16,12),skin,0,1.67,0,g);let cap=mesh(new THREE.SphereGeometry(.15,16,8,0,Math.PI*2,0,Math.PI/2),navy,0,1.69,0,g);let limbs=[];for(let side of [-1,1]){let leg=new THREE.Group();leg.position.set(side*.12,.9,0);g.add(leg);box(.15,.77,.18,navy,0,-.38,0,leg);box(.17,.09,.3,white,0,-.78,.055,leg);limbs.push(leg);}for(let side of [-1,1]){let arm=new THREE.Group();arm.position.set(side*.27,1.42,0);g.add(arm);box(.13,.30,.16,navy,0,-.14,0,arm);cylinder(.055,.065,.33,skin,0,-.43,0,arm);mesh(new THREE.SphereGeometry(.065,10,8),skin,0,-.61,0,arm);limbs.push(arm);}const hand=new THREE.Group();hand.position.set(0,-.65,0);limbs[3].add(hand);return {g,limbs,hand};}
+function person(x,z){return createHuman(scene,x,z);}
 let bowler=person(.55,-27);
 box(.075,.07,.04,skin,0,-.005,0,bowler.hand);for(let i=0;i<4;i++){const finger=cylinder(.009,.011,.065,skin,-.028+i*.018,-.06,.006,bowler.hand);finger.rotation.x=.35;}box(.025,.055,.025,skin,.047,-.018,0,bowler.hand);
-let umpire=person(-.8,-23);umpire.g.children[0].material=mat('#e7dfca');
+let umpire=person(-.8,-23);umpire.torso.material=mat('#e7dfca');
 const ball=mesh(new THREE.SphereGeometry(.0361,20,16),mat('#b51e2e',.43),0,-5,0);const seam=new THREE.Mesh(new THREE.TorusGeometry(.0363,.0012,4,40),white);ball.add(seam);
-// Bat and hands share the eye camera; no external batsman or chase camera.
-scene.add(camera);const batRig=new THREE.Group();camera.add(batRig);batRig.position.set(.36,-.43,-.52);batRig.rotation.set(-.25,.05,-.24);
-const wood=mat('#e4c68d',.55),grip=mat('#152c38',.8);box(.108,.56,.04,wood,0,0,0,batRig);box(.09,.24,.035,wood,0,.32,0,batRig);cylinder(.019,.019,.28,grip,0,.55,0,batRig);box(.095,.14,.003,navy,0,.13,.026,batRig);box(.067,.035,.004,mat('#d8f58e'),0,.17,.029,batRig);
-for(let i=0;i<2;i++){let glove=box(.075,.11,.075,white,i*.01-.025,.44+i*.095,.035,batRig);glove.rotation.z=-.2;for(let k=0;k<4;k++)box(.014,.048,.01,mat('#d6d9ce'),-.049+k*.018,.44+i*.095,.078,batRig);}
-
-boot({scene,camera,renderer,canvas,ball,batRig,bowler});
+scene.add(camera);sun.shadow.camera.layers.enable(1);
+const batModel=buildWillowBat(),batRig=batModel.rig;scene.add(batRig);
+for(const [x,z] of [[0,6],[-3,7],[-6,6.5],[15,1],[-18,-25]]){const f=createHuman(scene,x,z);if(z>3){f.limbs[0].rotation.x=-.2;f.limbs[1].rotation.x=-.2;f.limbs[2].rotation.x=-.6;f.limbs[3].rotation.x=-.6;}}
+boot({scene,camera,renderer,canvas,ball,batRig,bowler,batModel,sun});
