@@ -13,6 +13,6 @@ export class FirstPersonViewController {
   update(dt,state,foot,hand){this.clock+=dt;const gp=globalThis.navigator?.getGamepads?.()?.find(p=>p?.mapping==='standard');if(gp&&Math.hypot(gp.axes[2]||0,gp.axes[3]||0)>.18)this.move((gp.axes[2]||0)*dt*360,(gp.axes[3]||0)*dt*360);
     let yaw=this.targetYaw,pitch=this.targetPitch;if(state==='runup'){yaw=clamp(yaw,-.95,.95);pitch=clamp(pitch,-.72,.35);if(this.clock-this.lastLook>.5&&!this.looking&&!this.dragging){this.targetYaw*=Math.exp(-dt*.75);this.targetPitch+=(-.015-this.targetPitch)*(1-Math.exp(-dt*.75));}}
     const alpha=1-Math.exp(-dt*12);this.yaw+=(yaw-this.yaw)*alpha;this.pitch+=(pitch-this.pitch)*alpha;
-    this.camera.position.set((hand==='left'?-.08:.08)+foot.x,1.70+Math.sin(this.clock*2.1)*.003,.62+foot.z*.6);this.camera.rotation.set(this.pitch,this.yaw,0,'YXZ');
+    this.camera.position.set((hand==='left'?-.08:.08)+foot.x,1.70+Math.sin(this.clock*2.1)*.003,.62+foot.z*.6);if(this.body?.eyeAnchor)this.body.eyeAnchor.getWorldPosition(this.camera.position);this.camera.rotation.set(this.pitch,this.yaw,0,'YXZ');
   }
 }

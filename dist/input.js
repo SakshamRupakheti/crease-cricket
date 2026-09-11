@@ -2,7 +2,7 @@ import {BatPoseAndSwingController} from './realism/BatPoseAndSwingController.js'
 import {clamp,v,batBasis} from './physics.js';
 export class BatController {
   constructor(){this.poseController=new BatPoseAndSwingController();this.context='ready';this.mode='mouse';this.sensitivity=1;this.invert=false;this.hand='right';this.target=v(.15,.72,.03);this.position={...this.target};this.face=0;this.loft=0;this.foot=v();this.stroke=null;this.clock=0;this.leave=false;this.lastPointer=null;this.wheelBurst=null;this.pointers=new Map();this.active=true;this.onActivity=()=>{};this.keys=new Set();this.lastStroke=-1;}
-  reset(){this.target=v(this.hand==='left'?-.15:.15,.72,.03);this.position={...this.target};this.stroke=null;this.leave=false;this.lastPointer=null;this.wheelBurst=null;this.pointers.clear();this.keys.clear();this.clock=0;this.lastStroke=-1;this.foot=v();}
+  reset(){this.poseController.recovery=0;this.target=v(this.hand==='left'?-.15:.15,.72,.03);this.position={...this.target};this.stroke=null;this.leave=false;this.lastPointer=null;this.wheelBurst=null;this.pointers.clear();this.keys.clear();this.clock=0;this.lastStroke=-1;this.foot=v();}
   swing(strength=.55){if(!this.active||this.clock-this.lastStroke<.28)return;this.lastStroke=this.clock;this.stroke={age:0,power:clamp(strength,.15,1)};this.leave=false;this.onActivity('STROKE');}
   move(dx,dy,elapsed,source='mouse'){
     if(!this.active)return;const scale=this.sensitivity*(source==='trackpad'?.003:.004);this.target.x=clamp(this.target.x+dx*scale,-.95,.95);this.target.y=clamp(this.target.y-dy*scale,.28,1.42);this.leave=false;
@@ -15,7 +15,7 @@ export class BatController {
     this.target.x=clamp(this.target.x+dx*.003*this.sensitivity,-.95,.95);this.target.y=clamp(this.target.y-dy*.002*this.sensitivity,.28,1.42);
     if(!b.triggered&&b.dy<-12){this.swing(clamp(-b.dy/100+magnitude/35,.2,1));b.triggered=true;}this.onActivity('TWO-FINGER GESTURE');return true;
   }
-  step(dt){this.clock+=dt;const speed=.75*dt;if(this.keys.has('KeyA'))this.foot.x-=speed;if(this.keys.has('KeyD'))this.foot.x+=speed;if(this.keys.has('KeyW'))this.foot.z-=speed;if(this.keys.has('KeyS'))this.foot.z+=speed;this.foot.x=clamp(this.foot.x,-.4,.4);this.foot.z=clamp(this.foot.z,-.38,.22);if(this.keys.has('KeyQ'))this.face-=dt;if(this.keys.has('KeyE'))this.face+=dt;this.face=clamp(this.face,-.7,.7);this.loft=(this.keys.has('ShiftLeft')||this.keys.has('ShiftRight'))?.42:0;return this.poseController.compute(this,dt);
+  step(dt){this.clock+=dt;const speed=.75*dt;if(this.keys.has('KeyA'))this.foot.x-=speed;if(this.keys.has('KeyD'))this.foot.x+=speed;if(this.keys.has('KeyW'))this.foot.z-=speed;if(this.keys.has('KeyS'))this.foot.z+=speed;if(this.keys.has('KeyX'))this.foot.z-=speed*2;this.foot.x=clamp(this.foot.x,-.4,.4);this.foot.z=clamp(this.foot.z,-2.0,.35);if(this.keys.has('KeyQ'))this.face-=dt;if(this.keys.has('KeyE'))this.face+=dt;this.face=clamp(this.face,-.7,.7);this.loft=(this.keys.has('ShiftLeft')||this.keys.has('ShiftRight'))?.42:0;return this.poseController.compute(this,dt);
   }
   attach(canvas,{isBlocked=()=>false,onPause=()=>{},onLeave=()=>{}}={}){
     const pos=e=>({x:e.clientX,y:e.clientY,time:e.timeStamp});

@@ -1,7 +1,8 @@
+import {bladeMesh,contactRegion,REGION_RESTITUTION} from './realism/BatGeometry.js';
 // SI units. +Y up; +Z from bowler toward striker; +X striker's right.
 // Coefficients are explicit calibration priors, not fitted cricket measurements.
 export const STEP = 0.001;
-export const MODEL_VERSION = 'crease-physics-2.0.0';
+export const MODEL_VERSION = 'crease-physics-3.0.0';
 export const RULES = Object.freeze({id:'crease_instrumented_nets_v1',effectiveDate:'2026-09-10',validBallsPerOver:6,boundaryRadius:64,boundaryCenterZ:-9.06,stumpZ:1.0,stumpHeight:.711,stumpWidth:.2286,pitchLength:20.12,pitchWidth:3.05});
 export const PROFILES = Object.freeze({hard:{id:'hard_dry_prior_v1',restitution:.64,friction:.32},soft:{id:'soft_prior_v1',restitution:.48,friction:.48}});
 export const DEFAULTS = Object.freeze({mass:.1595,radius:.0361,gravity:9.81,density:1.2,drag:.47,spinLift:.18,seamForce:.08,spinDecay:.035,batRestitution:.52,batEffectiveMass:2.5,wind:{x:0,y:0,z:0}});
@@ -21,16 +22,19 @@ export function makeRelease(intent,position){
   const time=(intent.bounceZ-position.z)/intent.speed;
   return {position:copy(position),velocity:v((intent.line-position.x)/((.0-position.z)/intent.speed),(.0361-position.y+.5*9.81*time*time)/time,intent.speed),spin:intent.spin?v(intent.sign*35,0,intent.sign*125):v(22,0,intent.sign*5),seamNormal:v(Math.cos(intent.seamAngle),0,Math.sin(intent.seamAngle)),seamCoefficient:intent.spin?.018:intent.sign*.08};
 }
-export function batBasis(yaw=0,loft=0){const normal=unit(v(Math.sin(yaw)*Math.cos(loft),Math.sin(loft),-Math.cos(yaw)*Math.cos(loft)));const right=unit(v(Math.cos(yaw),0,Math.sin(yaw)));return {right,up:cross(right,normal),normal};}
-function local(p,b){const q=sub(p,b.position),axes=batBasis(b.yaw,b.loft);return v(dot(q,axes.right),dot(q,axes.up),dot(q,axes.normal));}
-// Relative swept sphere vs bat box, evaluated every millisecond. The visual bat
-// uses precisely the same pose/dimensions. Edges are rounded by the ball radius.
-export function sweepBat(from,to,previousBat,bat,radius){
-  const a=local(from,previousBat),b=local(to,bat),d=sub(b,a),half=[.054+radius,.28+radius,.020+radius],aa=[a.x,a.y,a.z],dd=[d.x,d.y,d.z];let enter=0,exit=1,axis=-1,sign=1;
-  for(let i=0;i<3;i++){if(Math.abs(dd[i])<1e-12){if(Math.abs(aa[i])>half[i])return null;continue;}let t1=(-half[i]-aa[i])/dd[i],t2=(half[i]-aa[i])/dd[i],n=-1;if(t1>t2){[t1,t2]=[t2,t1];n=1;}if(t1>enter){enter=t1;axis=i;sign=n;}exit=Math.min(exit,t2);if(enter>exit)return null;}
-  if(exit<0||enter>1)return null;
-  const axes=batBasis(bat.yaw,bat.loft),array=[axes.right,axes.up,axes.normal];if(axis<0){axis=2;sign=a.z>=0?1:-1;}
-  return {fraction:clamp(enter,0,1),normal:mul(array[axis],sign),local:add(a,mul(d,enter)),edge:axis!==2};
+export function batBasis(yaw=0,loft=0,roll=0){const normal=unit(v(Math.sin(yaw)*Math.cos(loft),Math.sin(loft),-Math.cos(yaw)*Math.cos(loft)));const right=unit(v(Math.cos(yaw),0,Math.sin(yaw)));const up=cross(right,normal);return {right:add(mul(right,Math.cos(roll)),mul(up,Math.sin(roll))),up:add(mul(up,Math.cos(roll)),mul(right,-Math.sin(roll))),normal};}
+function local(p,b){const q=sub(p,b.position),axes=batBasis(b.yaw,b.loft,b.roll);return v(dot(q,axes.right),dot(q,axes.up),-dot(q,axes.normal));}
+// Conservative advancement of a swept sphere against the actual blade triangles.
+const mesh=bladeMesh(),triangles=[];
+for(let i=0;i<mesh.indices.length;i+=3)triangles.push(mesh.indices.slice(i,i+3).map(k=>v(...mesh.positions.slice(k*3,k*3+3))));
+// Closest point on triangle (Voronoi regions), including edges and vertices.
+function closest(p,a,b,c){const ab=sub(b,a),ac=sub(c,a),ap=sub(p,a),d1=dot(ab,ap),d2=dot(ac,ap);if(d1<=0&&d2<=0)return a;const bp=sub(p,b),d3=dot(ab,bp),d4=dot(ac,bp);if(d3>=0&&d4<=d3)return b;const vc=d1*d4-d3*d2;if(vc<=0&&d1>=0&&d3<=0)return add(a,mul(ab,d1/(d1-d3)));const cp=sub(p,c),d5=dot(ab,cp),d6=dot(ac,cp);if(d6>=0&&d5<=d6)return c;const vb=d5*d2-d1*d6;if(vb<=0&&d2>=0&&d6<=0)return add(a,mul(ac,d2/(d2-d6)));const va=d3*d6-d5*d4;if(va<=0&&d4-d3>=0&&d5-d6>=0)return add(b,mul(sub(c,b),(d4-d3)/((d4-d3)+(d5-d6))));return add(a,add(mul(ab,vb/(va+vb+vc)),mul(ac,vc/(va+vb+vc))));}
+export function sweepBat(from,to,previousBat,bat,radius){const a=local(from,previousBat),b=local(to,bat),d=sub(b,a),travel=length(d);if(Math.min(a.x,b.x)>.055+radius||Math.max(a.x,b.x)<-.055-radius||Math.min(a.y,b.y)>.663+radius||Math.max(a.y,b.y)<-.28-radius||Math.min(a.z,b.z)>.062+radius||Math.max(a.z,b.z)<-.019-radius)return null;
+ let t=0;for(let step=0;step<48&&t<=1;step++){const p=add(a,mul(d,t));let distance=Infinity,point=null;for(const tri of triangles){const q=closest(p,...tri),dist=length(sub(p,q));if(dist<distance){distance=dist;point=q;}}
+ // Handle: finite capsule along the oval grip, conservative 18 mm radius.
+ const hp=v(0,clamp(p.y,.335,.645),0),hd=length(sub(p,hp)),hq=add(hp,mul(unit(sub(p,hp)),.018));if(hd-.018<distance){distance=hd-.018;point=hq;}
+ if(distance<=radius+1e-6){const n=unit(sub(p,point)),axes=batBasis(bat.yaw,bat.loft,bat.roll),region=contactRegion(point,n);return {fraction:t,normal:add(add(mul(axes.right,n.x),mul(axes.up,n.y)),mul(axes.normal,-n.z)),local:point,region,edge:region.includes('edge'),restitutionScale:REGION_RESTITUTION[region]};}if(travel<1e-12)return null;t+=(distance-radius)/travel;}
+ return null;
 }
 export class Ledger {
   constructor(rules=RULES){this.rules=copy(rules);this.deliveries=0;this.legalBalls=0;this.contacts=0;this.wickets=0;this.runs=0;this.boundaryRuns=0;this.events=[];this.committed=new Set();}
@@ -67,8 +71,8 @@ export class BallSimulation {
     }
     if(bat&&!this.contact&&!bat.leave){
       const prev=this.lastBat??bat,hit=sweepBat(before,this.position,prev,bat,c.radius);
-      if(hit){const axes=batBasis(bat.yaw,bat.loft),angular=add(mul(axes.right,(bat.loft-prev.loft)/STEP),v(0,-(bat.yaw-prev.yaw)/STEP,0)),point=add(before,mul(sub(this.position,before),hit.fraction)),batVelocity=add(mul(sub(bat.position,prev.position),1/STEP),cross(angular,sub(point,bat.position))),relative=sub(this.velocity,batVelocity),closing=dot(relative,hit.normal);
-        if(closing<-.05){const restitution=c.batRestitution*(hit.edge?.60:1);const impulse=-(1+restitution)*closing/(1+c.mass/c.batEffectiveMass);this.velocity=add(this.velocity,mul(hit.normal,impulse));this.position=add(add(before,mul(sub(this.position,before),hit.fraction)),mul(hit.normal,.002));this.contact={position:copy(this.position),batLocalM:hit.local,relativeSpeedMps:length(relative),batSpeedMps:length(batVelocity),edge:hit.edge,timeS:this.time};this.event('BatContact',this.contact);}
+      if(hit){const axes=batBasis(bat.yaw,bat.loft,bat.roll),angular=add(mul(axes.right,(bat.loft-prev.loft)/STEP),v(0,-(bat.yaw-prev.yaw)/STEP,0)),point=add(before,mul(sub(this.position,before),hit.fraction)),batVelocity=add(mul(sub(bat.position,prev.position),1/STEP),cross(add(angular,mul(axes.normal,-((bat.roll||0)-(prev.roll||0))/STEP)),sub(point,bat.position))),relative=sub(this.velocity,batVelocity),closing=dot(relative,hit.normal);
+        if(closing<-.05){const restitution=c.batRestitution*hit.restitutionScale;const impulse=-(1+restitution)*closing/(1+c.mass/c.batEffectiveMass);this.velocity=add(this.velocity,mul(hit.normal,impulse));this.position=add(add(before,mul(sub(this.position,before),hit.fraction)),mul(hit.normal,.002));this.contact={position:copy(this.position),batLocalM:hit.local,relativeSpeedMps:length(relative),batSpeedMps:length(batVelocity),edge:hit.edge,region:hit.region,restitutionScale:hit.restitutionScale,timeS:this.time};this.event('BatContact',this.contact);}
       }
     }
     if(bat)this.lastBat=copy(bat);
