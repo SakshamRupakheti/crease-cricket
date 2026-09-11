@@ -1,3 +1,4 @@
+import {addBallStitching,addNearGrass,detailMaterial} from './realism/SurfaceDetail.js';
 import {buildWillowBat,createHuman} from './realism/PlayerBody.js';
 import {boot} from './play.js';
 import * as THREE from './three.module.js';
@@ -31,8 +32,9 @@ function person(x,z){return createHuman(scene,x,z);}
 let bowler=person(.55,-27);
 box(.075,.07,.04,skin,0,-.005,0,bowler.hand);for(let i=0;i<4;i++){const finger=cylinder(.009,.011,.065,skin,-.028+i*.018,-.06,.006,bowler.hand);finger.rotation.x=.35;}box(.025,.055,.025,skin,.047,-.018,0,bowler.hand);
 let umpire=person(-.8,-23);umpire.torso.material=mat('#e7dfca');
-const ball=mesh(new THREE.SphereGeometry(.0361,20,16),mat('#b51e2e',.43),0,-5,0);const seam=new THREE.Mesh(new THREE.TorusGeometry(.0363,.0012,4,40),white);ball.add(seam);
+detailMaterial(clay,'soil');const nearGrass=addNearGrass(scene);
+const ball=mesh(new THREE.SphereGeometry(.0361,20,16),mat('#b51e2e',.43),0,-5,0);const seam=new THREE.Mesh(new THREE.TorusGeometry(.0363,.0012,4,40),white);ball.add(seam);addBallStitching(ball);
 scene.add(camera);sun.shadow.camera.layers.enable(1);
 const batModel=buildWillowBat(),batRig=batModel.rig;scene.add(batRig);
 for(const [x,z] of [[0,6],[-3,7],[-6,6.5],[15,1],[-18,-25]]){const f=createHuman(scene,x,z);if(z>3){f.limbs[0].rotation.x=-.2;f.limbs[1].rotation.x=-.2;f.limbs[2].rotation.x=-.6;f.limbs[3].rotation.x=-.6;}}
-boot({scene,camera,renderer,canvas,ball,batRig,bowler,batModel,sun});
+boot({scene,camera,renderer,canvas,ball,batRig,bowler,batModel,sun,nearGrass});

@@ -5,6 +5,8 @@ export const SHOTS={
  backdefence:{label:'Back-foot defence',yaw:0,roll:0,height:.08,reach:-.05,crouch:0,arc:.65},
  straight:{label:'Straight drive',yaw:0,roll:0,height:0,reach:.1,crouch:.02},
  cover:{label:'Cover drive',yaw:-.40,roll:-.28,height:-.03,reach:.12,crouch:.04},
+ offdrive:{label:'Off drive',yaw:-.22,roll:-.12,height:0,reach:.10,crouch:.02},
+ glance:{label:'Leg glance',yaw:.72,roll:.4,height:-.03,reach:-.02,crouch:0,arc:.75},
  ondrive:{label:'On drive',yaw:.32,roll:.23,height:0,reach:.10,crouch:.02},
  flick:{label:'Flick / glance',yaw:.60,roll:.48,height:-.05,reach:.02,crouch:.02},
  cut:{label:'Square cut',yaw:-.6,roll:-1.2,height:.15,reach:0,crouch:.03},
