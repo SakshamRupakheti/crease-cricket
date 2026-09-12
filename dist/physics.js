@@ -1,8 +1,9 @@
+import {FieldingController} from './realism/FieldingController.js';
 import {bladeMesh,contactRegion,REGION_RESTITUTION} from './realism/BatGeometry.js';
 // SI units. +Y up; +Z from bowler toward striker; +X striker's right.
 // Coefficients are explicit calibration priors, not fitted cricket measurements.
 export const STEP = 0.001;
-export const MODEL_VERSION = 'crease-physics-4.0.0';
+export const MODEL_VERSION = 'crease-physics-5.0.0';
 export const RULES = Object.freeze({id:'crease_instrumented_nets_v1',effectiveDate:'2026-09-10',validBallsPerOver:6,boundaryRadius:64,boundaryCenterZ:-9.06,stumpZ:1.0,stumpHeight:.711,stumpWidth:.2286,pitchLength:20.12,pitchWidth:3.05});
 export const PROFILES = Object.freeze({hard:{id:'hard_dry_prior_v1',restitution:.64,friction:.32},soft:{id:'soft_prior_v1',restitution:.48,friction:.48}});
 export const DEFAULTS = Object.freeze({mass:.1595,radius:.0361,gravity:9.81,density:1.2,drag:.47,spinLift:.18,seamForce:.08,spinDecay:.035,batRestitution:.52,batEffectiveMass:2.5,batFriction:.22,sweetSpotHeightFromToe:.21,sweetSpotWidth:.045,sweetSpotFalloff:.16,batTwistInertia:.035,wind:{x:0,y:0,z:0}});
@@ -44,8 +45,8 @@ export class Ledger {
   commit(id,events){if(this.committed.has(id))return false;this.committed.add(id);const has=t=>events.some(e=>e.type===t);const illegal=has('NoBallDetected')||has('WideDetected');this.deliveries++;if(!illegal)this.legalBalls++;if(has('BatContact'))this.contacts++;if(has('WicketBroken')&&!has('NoBallDetected'))this.wickets++;const boundary=events.find(e=>e.type==='BoundaryCrossed');this.boundaryRuns+=boundary?.runs||0;this.runs+=(boundary?.runs||0)+(illegal?1:0);this.events.push(Object.freeze({type:'ScoreCommitted',deliveryId:id,legalBallIndex:this.legalBalls,contacts:this.contacts,wickets:this.wickets,runs:this.runs}));return true;}
 }
 export class BallSimulation {
-  constructor(release,{seed=1,physics={},pitch=PROFILES.hard,rules=RULES}={}){
-    this.config={...DEFAULTS,...physics};if(this.config.mass<.1559||this.config.mass>.163)throw new RangeError('Ball mass is outside the configured men\'s-ball preset');if(this.config.radius<.03565||this.config.radius>.03645)throw new RangeError('Ball radius outside preset');
+  constructor(release,{seed=1,physics={},pitch=PROFILES.hard,rules=RULES,fielding=false}={}){
+    this.fielding=fielding?new FieldingController():null;this.lastRunRequest=0;this.config={...DEFAULTS,...physics};if(this.config.mass<.1559||this.config.mass>.163)throw new RangeError('Ball mass is outside the configured men\'s-ball preset');if(this.config.radius<.03565||this.config.radius>.03645)throw new RangeError('Ball radius outside preset');
     this.pitch=copy(pitch);this.rules=copy(rules);this.seed=seed;this.release=copy(release);this.position=copy(release.position);this.velocity=copy(release.velocity);this.spin=copy(release.spin);this.seamNormal=unit(release.seamNormal);this.tick=0;this.events=[];this.frames=[];this.inputs=[];this.contact=null;this.bounces=0;this.postHitBounces=0;this.dead=false;this.forces={};this.lastBat=null;this.event('BallReleased',{release:copy(release)});this.record(null);
   }
   get time(){return this.tick*STEP;}
@@ -83,16 +84,17 @@ export class BallSimulation {
     }
     if(bat)this.lastBat=copy(bat);
     // Detect the swept ball crossing the wicket plane; no timing-based wickets.
-    if(before.z<this.rules.stumpZ&&this.position.z>=this.rules.stumpZ){const f=(this.rules.stumpZ-before.z)/(this.position.z-before.z),p=add(before,mul(sub(this.position,before),f));if(Math.abs(p.x)<=this.rules.stumpWidth/2+c.radius&&p.y<=this.rules.stumpHeight+c.radius){this.event('WicketBroken',{position:p});this.end('BOWLED');}else if(!this.contact){if(Math.abs(p.x)>1.05)this.event('WideDetected');this.end('MISSED');}}
+    if(!this.fielding?.returning&&before.z<this.rules.stumpZ&&this.position.z>=this.rules.stumpZ){const f=(this.rules.stumpZ-before.z)/(this.position.z-before.z),p=add(before,mul(sub(this.position,before),f));if(Math.abs(p.x)<=this.rules.stumpWidth/2+c.radius&&p.y<=this.rules.stumpHeight+c.radius){this.event('WicketBroken',{position:p,velocity:this.velocity});this.end('BOWLED');}else if(!this.contact){if(Math.abs(p.x)>1.05)this.event('WideDetected');if(!this.fielding)this.end('MISSED');}}
     const radius=Math.hypot(this.position.x,this.position.z-this.rules.boundaryCenterZ);
-    if(this.contact&&radius>=this.rules.boundaryRadius){this.event('BoundaryCrossed',{position:this.position,runs:this.postHitBounces?4:6});this.end(this.postHitBounces?'FOUR':'SIX');}
-    if(!this.dead&&this.contact&&((speed<.5&&this.position.y<.05)||this.time>10||this.position.z>7))this.end('IN PLAY');
+    if(this.contact&&!this.fielding?.returning&&this.fielding?.possession==null&&radius>=this.rules.boundaryRadius){this.event('BoundaryCrossed',{position:this.position,runs:this.postHitBounces?4:6});this.end(this.postHitBounces?'FOUR':'SIX');}
+    if(!this.dead&&this.contact&&(!this.fielding?((speed<.5&&this.position.y<.05)||this.time>10||this.position.z>7):this.time>22))this.end('IN PLAY');
+    if(this.fielding&&!this.dead){if((bat?.runRequest||0)>this.lastRunRequest){this.fielding.requestRun();this.lastRunRequest=bat.runRequest;}if(this.tick%10===0)this.fielding.step(this,.01);}
     if(!this.dead&&!this.contact&&this.time>3)this.end('MISSED');
     if(this.tick%10===0||this.dead)this.record(bat);
   }
-  record(bat){this.frames.push({tick:this.tick,timeS:this.time,position:copy(this.position),velocity:copy(this.velocity),seamNormal:copy(this.seamNormal),bat:bat?copy(bat):null,forces:copy(this.forces)});}
+  record(bat){this.frames.push({tick:this.tick,timeS:this.time,position:copy(this.position),velocity:copy(this.velocity),seamNormal:copy(this.seamNormal),bat:bat?copy(bat):null,fielding:this.fielding?.snapshot()||null,forces:copy(this.forces)});}
   end(result){if(this.dead)return;this.dead=true;this.result=result;this.event('BallDead',{result});}
-  export(){return {modelVersion:MODEL_VERSION,fixedStepSeconds:STEP,rulesetId:this.rules.id,effectiveDate:this.rules.effectiveDate,seed:this.seed,release:this.release,physics:this.config,pitch:this.pitch,rules:this.rules,events:this.events,inputs:this.inputs,frames:this.frames,result:this.result,calibrationStatus:'Uncalibrated priors; no measurement accuracy claim.'};}
+  export(){return {modelVersion:MODEL_VERSION,fixedStepSeconds:STEP,rulesetId:this.rules.id,effectiveDate:this.rules.effectiveDate,seed:this.seed,fieldingEnabled:!!this.fielding,release:this.release,physics:this.config,pitch:this.pitch,rules:this.rules,events:this.events,inputs:this.inputs,frames:this.frames,result:this.result,calibrationStatus:'Uncalibrated priors; no measurement accuracy claim.'};}
 }
 // A replay's authoritative inputs are bat poses at fixed ticks, not render frames.
-export function replayInputs(tape){if(tape.modelVersion!==MODEL_VERSION)throw new Error('Unsupported simulation version');const sim=new BallSimulation(tape.release,{seed:tape.seed,physics:tape.physics,pitch:tape.pitch,rules:tape.rules});for(const e of tape.events.filter(e=>e.tick===0&&e.type==='BowlerAction'))sim.events.push(Object.freeze(copy(e)));let i=0,pose=null;const end=tape.events.find(e=>e.type==='BallDead')?.tick??tape.frames.at(-1).tick;while(sim.tick<end&&!sim.dead){if(tape.inputs[i]?.tick===sim.tick+1){pose=tape.inputs[i++].bat;}sim.step(pose);}return sim;}
+export function replayInputs(tape){if(tape.modelVersion!==MODEL_VERSION)throw new Error('Unsupported simulation version');const sim=new BallSimulation(tape.release,{seed:tape.seed,physics:tape.physics,pitch:tape.pitch,rules:tape.rules,fielding:tape.fieldingEnabled});for(const e of tape.events.filter(e=>e.tick===0&&e.type==='BowlerAction'))sim.events.push(Object.freeze(copy(e)));let i=0,pose=null;const end=tape.events.find(e=>e.type==='BallDead')?.tick??tape.frames.at(-1).tick;while(sim.tick<end&&!sim.dead){if(tape.inputs[i]?.tick===sim.tick+1){pose=tape.inputs[i++].bat;}sim.step(pose);}return sim;}

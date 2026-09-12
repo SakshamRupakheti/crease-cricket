@@ -19,7 +19,7 @@ box(3.05,.025,20.12,clay,0,-.02,-9.06);box(3.8,.01,22,mat('#a59a66'),0,-.035,-9.
 // Fine, deterministic pitch wear gives the surface depth without an image dependency.
 let seed=31;function random(){seed=(seed*16807)%2147483647;return(seed-1)/2147483646;}
 const marks=new THREE.InstancedMesh(new THREE.BoxGeometry(1,.001,1),mat('#978658'),650),dummy=new THREE.Object3D();for(let i=0;i<650;i++){dummy.position.set((random()-.5)*2.9,.024,-22+random()*24);dummy.scale.set(.01+random()*.035,1,.02+random()*.15);dummy.rotation.y=random()*3;dummy.updateMatrix();marks.setMatrixAt(i,dummy.matrix);}scene.add(marks);
-for(const z of [-19.12,1]){const dir=z<0?1:-1;box(2.64,.009,.045,white,0,.005,z);box(3.05,.009,.045,white,0,.005,z+dir*1.22);for(const x of [-1.32,1.32])box(.04,.009,2,white,x,.005,z+dir*.6);for(const x of [-.095,0,.095])cylinder(.019,.019,.711,white,x,.3555,z);box(.2286,.025,.025,white,0,.711,z);}
+for(const z of [-19.12,1]){const dir=z<0?1:-1;box(2.64,.009,.045,white,0,.005,z);box(3.05,.009,.045,white,0,.005,z+dir*1.22);for(const x of [-1.32,1.32])box(.04,.009,2,white,x,.005,z+dir*.6);for(const x of [-.095,0,.095])cylinder(.019,.019,.711,white,x,.3555,z);}
 // A full 3D stadium, including tiered seating, roof, railings and floodlights.
 const seatMats=['#254653','#dae0cb','#b8c5b7','#698480'].map(c=>mat(c));
 for(let sector=0;sector<36;sector++){const a=sector/36*Math.PI*2;let group=new THREE.Group();group.position.set(Math.sin(a)*74,0,Math.cos(a)*74-10);group.rotation.y=a;scene.add(group);for(let tier=0;tier<4;tier++){box(12,1.5,3,mat('#506268'),0,2+tier*2.6,tier*3,group);for(let row=0;row<3;row++){box(12,.12,.08,white,0,2.9+tier*2.6+row*.4,tier*3+row*.7,group);for(let s=0;s<19;s++){box(.37,.42,.34,seatMats[Math.floor(random()*4)],(s-9)*.6,2.9+tier*2.6+row*.4,tier*3+row*.7,group);}}}box(12,.32,17,mat('#d2d5c9'),0,14,4,group);box(.18,13,.18,white,-5.8,6.5,9,group);box(12,1.25,.2,navy,0,.9,-2,group);}
@@ -36,5 +36,4 @@ detailMaterial(clay,'soil');const nearGrass=addNearGrass(scene);
 const ball=mesh(new THREE.SphereGeometry(.0361,20,16),mat('#b51e2e',.43),0,-5,0);const seam=new THREE.Mesh(new THREE.TorusGeometry(.0363,.0012,4,40),white);ball.add(seam);addBallStitching(ball);
 scene.add(camera);sun.shadow.camera.layers.enable(1);
 const batModel=buildWillowBat(),batRig=batModel.rig;scene.add(batRig);
-for(const [x,z] of [[0,6],[-3,7],[-6,6.5],[15,1],[-18,-25]]){const f=createHuman(scene,x,z);if(z>3){f.limbs[0].rotation.x=-.2;f.limbs[1].rotation.x=-.2;f.limbs[2].rotation.x=-.6;f.limbs[3].rotation.x=-.6;}}
-boot({scene,camera,renderer,canvas,ball,batRig,bowler,batModel,sun,nearGrass});
+boot({scene,camera,renderer,canvas,ball,batRig,bowler,batModel,sun,nearGrass,umpire});

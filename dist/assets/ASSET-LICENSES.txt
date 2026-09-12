@@ -1,0 +1,15 @@
+male-base.glb
+Creator: orange juice games
+Source: https://orange-juice-games.itch.io/male-base-mesh
+Source filename: male_base_mesh.glb (male_base_mesh.zip)
+License: Creative Commons Zero v1.0 Universal (CC0), as stated by creator on source page.
+https://creativecommons.org/publicdomain/zero/1.0/
+Adaptation: runtime cricket-kit vertex colours and procedural retargeting.
+Cost: $0. No licensed real-person likeness.
+
+vendor/GLTFLoader.js, BufferGeometryUtils.js, SkeletonUtils.js
+Source: https://github.com/mrdoob/three.js/tree/r170/examples/jsm
+MIT license: see ../THREE-LICENSE.txt. Local import paths adjusted.
+
+crowd-atlas.png: existing AI-generated spectator artwork from earlier CREASE release.
+Bat, gloves, pads, shoes, wickets, pitch, grass and stadium geometry: custom procedural assets.

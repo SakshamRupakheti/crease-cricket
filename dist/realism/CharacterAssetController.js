@@ -1,0 +1,15 @@
+import * as THREE from '../three.module.js';
+import {GLTFLoader} from '../vendor/GLTFLoader.js';
+import {clone} from '../vendor/SkeletonUtils.js';
+// Shared CC0 rig, recoloured into generic cricket kit. No licensed likenesses.
+export class CharacterAssetController {
+ constructor(){this.instances=[];this.ready=false;this.template=null;if(typeof document.createElementNS==='function')new GLTFLoader().load('./assets/male-base.glb',g=>{this.template=g.scene;this.ready=true;for(const a of this.instances)this.install(a);},undefined,()=>{this.failed=true;});}
+ add(driver,{skin='#a97752',kit='#e4e4d5'}={}){const a={driver,skin,kit,bones:{}};this.instances.push(a);if(this.ready)this.install(a);return a;}
+ install(a){const model=clone(this.template),wrapper=new THREE.Group();wrapper.rotation.y=-Math.PI/2;wrapper.scale.setScalar(.925);wrapper.position.y=.922;wrapper.add(model);a.driver.g.traverse(o=>{if(o.isMesh)o.visible=false;});a.driver.g.add(wrapper);a.model=wrapper;
+ model.traverse(o=>{if(o.isBone)a.bones[o.name]=o;if(o.isSkinnedMesh){o.geometry=o.geometry.clone();const pos=o.geometry.attributes.position,colors=[],skin=new THREE.Color(a.skin),kit=new THREE.Color(a.kit),shoe=new THREE.Color('#d8d6c9'),hair=new THREE.Color('#28251f');for(let i=0;i<pos.count;i++){const y=pos.getY(i),z=Math.abs(pos.getZ(i)),c=y>.88?hair:y>.62||(z>.32&&y<.47&&y>-.05)?skin:y<-.86?shoe:kit;colors.push(c.r,c.g,c.b);}o.geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));o.material=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.86});o.castShadow=true;o.receiveShadow=true;o.frustumCulled=false;}});wrapper.updateMatrixWorld(true);
+ a.rest=new Map(Object.values(a.bones).map(b=>[b,b.quaternion.clone()]));
+ }
+ aim(bone,child,target){if(!bone||!child)return;const origin=bone.getWorldPosition(new THREE.Vector3()),from=child.getWorldPosition(new THREE.Vector3()).sub(origin).normalize(),to=target.clone().sub(origin).normalize(),q=bone.getWorldQuaternion(new THREE.Quaternion()),parent=bone.parent.getWorldQuaternion(new THREE.Quaternion());q.premultiply(new THREE.Quaternion().setFromUnitVectors(from,to));bone.quaternion.copy(parent.invert().multiply(q));bone.updateWorldMatrix(false,true);}
+ update(driver=null){for(const a of this.instances){if(!a.model||(driver&&a.driver!==driver))continue;for(const [bone,q] of a.rest)bone.quaternion.copy(q);a.driver.g.updateMatrixWorld(true);for(const [side,index] of [['L',2],['R',3]]){const arm=a.driver.limbs[index],shoulder=arm.getWorldPosition(new THREE.Vector3()),hand=a.driver.hands[index-2].getWorldPosition(new THREE.Vector3()),elbow=shoulder.clone().lerp(hand,.51);elbow.z-=.025;this.aim(a.bones['upper_arm'+side],a.bones['forearm'+side],elbow);this.aim(a.bones['forearm'+side],a.bones['hand'+side],hand);}for(const [side,index] of [['L',0],['R',1]]){const thigh=a.bones['thigh'+side];if(thigh)thigh.rotateX(a.driver.limbs[index].rotation.x*.65);}a.model.updateMatrixWorld(true);}}
+ hand(driver,side){const a=this.instances.find(a=>a.driver===driver);return a?.bones[side==='left'?'handL':'handR']||driver.hand;}
+}
