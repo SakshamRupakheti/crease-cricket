@@ -7,3 +7,4 @@
 @media(max-height:500px) and (orientation:landscape){.viewTools{bottom:auto;top:170px}}
 
 @media(max-height:500px) and (orientation:landscape){.panel{max-width:360px;width:360px;bottom:72px;top:72px;max-height:none}.panel h1{font-size:24px;margin:3px 0}.matchSetup label{font-size:9px}.matchSetup select{padding:6px;font-size:11px}.panel .primary{margin-top:8px;padding:11px}.panel .instruction{display:none}.panel .matchNote{margin-bottom:6px}.analysis{max-height:calc(100dvh - 130px)}.replayBar{top:auto}}
+.studioLink{color:#d8f58e;font-size:11px;align-self:center;text-decoration:none;margin-right:8px}@media(max-width:600px){.studioLink{font-size:9px;max-width:42px;margin-right:2px}}

@@ -3,7 +3,7 @@ import {bladeMesh,contactRegion,REGION_RESTITUTION} from './realism/BatGeometry.
 // SI units. +Y up; +Z from bowler toward striker; +X striker's right.
 // Coefficients are explicit calibration priors, not fitted cricket measurements.
 export const STEP = 0.001;
-export const MODEL_VERSION = 'crease-physics-5.0.0';
+export const MODEL_VERSION = 'crease-physics-6.0.0';
 export const RULES = Object.freeze({id:'crease_instrumented_nets_v1',effectiveDate:'2026-09-10',validBallsPerOver:6,boundaryRadius:64,boundaryCenterZ:-9.06,stumpZ:1.0,stumpHeight:.711,stumpWidth:.2286,pitchLength:20.12,pitchWidth:3.05});
 export const PROFILES = Object.freeze({hard:{id:'hard_dry_prior_v1',restitution:.64,friction:.32},soft:{id:'soft_prior_v1',restitution:.48,friction:.48}});
 export const DEFAULTS = Object.freeze({mass:.1595,radius:.0361,gravity:9.81,density:1.2,drag:.47,spinLift:.18,seamForce:.08,spinDecay:.035,batRestitution:.52,batEffectiveMass:2.5,batFriction:.22,sweetSpotHeightFromToe:.21,sweetSpotWidth:.045,sweetSpotFalloff:.16,batTwistInertia:.035,wind:{x:0,y:0,z:0}});
@@ -17,6 +17,8 @@ export const cross=(a,b)=>v(a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x);
 export const unit=a=>mul(a,1/(length(a)||1));
 export const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const copy=x=>JSON.parse(JSON.stringify(x));
+// Contact effective mass includes the free bat's COM lever and principal inertia.
+export function effectiveBatMass(bat,local,normal,fallback=2.5){if(!bat.physicalBat)return fallback;const body=bat.physicalBat,axes=batBasis(bat.yaw,bat.loft,bat.roll,bat.twist),r=sub(batWorldPoint(local,bat),body.centerOfMass),torque=cross(r,normal),inertia=body.inertia||[.105,.0025,.105],basis=[axes.right,axes.up,mul(axes.normal,-1)];let inverse=v();for(let i=0;i<3;i++)inverse=add(inverse,mul(basis[i],dot(torque,basis[i])/inertia[i]));return 1/(1/body.mass+Math.max(0,dot(normal,cross(inverse,r))));}
 export function rng(seed){let s=seed>>>0||1;return()=>{s^=s<<13;s^=s>>>17;s^=s<<5;return(s>>>0)/4294967296;};}
 export function makeIntent(seed){const r=rng(seed),spin=r()<.45,sign=r()<.5?-1:1;return {seed,spin,sign,speed:spin?21+r()*4:32+r()*6,bounceZ:-7.5+r()*3.5,line:(r()-.5)*.55,armSlot:sign*(spin?.22:.07),wrist:sign*(spin?.7:.14),runupSeconds:spin?2.1:2.8,seamAngle:sign*(.10+r()*.20)};}
 export function makeRelease(intent,position){
@@ -46,7 +48,7 @@ export class Ledger {
 }
 export class BallSimulation {
   constructor(release,{seed=1,physics={},pitch=PROFILES.hard,rules=RULES,fielding=false}={}){
-    this.fielding=fielding?new FieldingController():null;this.lastRunRequest=0;this.config={...DEFAULTS,...physics};if(this.config.mass<.1559||this.config.mass>.163)throw new RangeError('Ball mass is outside the configured men\'s-ball preset');if(this.config.radius<.03565||this.config.radius>.03645)throw new RangeError('Ball radius outside preset');
+    this.fielding=fielding?new FieldingController({keeperDepth:release.velocity.z<28?3.2:6}):null;this.lastRunRequest=0;this.config={...DEFAULTS,...physics};if(this.config.mass<.1559||this.config.mass>.163)throw new RangeError('Ball mass is outside the configured men\'s-ball preset');if(this.config.radius<.03565||this.config.radius>.03645)throw new RangeError('Ball radius outside preset');
     this.pitch=copy(pitch);this.rules=copy(rules);this.seed=seed;this.release=copy(release);this.position=copy(release.position);this.velocity=copy(release.velocity);this.spin=copy(release.spin);this.seamNormal=unit(release.seamNormal);this.tick=0;this.events=[];this.frames=[];this.inputs=[];this.contact=null;this.bounces=0;this.postHitBounces=0;this.dead=false;this.forces={};this.lastBat=null;this.event('BallReleased',{release:copy(release)});this.record(null);
   }
   get time(){return this.tick*STEP;}
@@ -73,10 +75,10 @@ export class BallSimulation {
       if(Math.abs(incoming.y)>.3)this.event('BallPitched',{position:this.position,incoming,outgoing:this.velocity,seamContact});
       if(!onPitch&&Math.abs(incoming.y)<.3)this.velocity.y=0;
     }
-    if(bat&&!this.contact&&!bat.leave){
+    if(bat&&!this.contact&&(!bat.leave||bat.physicalBat)){
       const prev=this.lastBat??bat,hit=sweepBat(before,this.position,prev,bat,c.radius);
       if(hit){const axes=batBasis(bat.yaw,bat.loft,bat.roll,bat.twist),batVelocity=batPointVelocity(hit.local,prev,bat),relative=sub(this.velocity,batVelocity),closing=dot(relative,hit.normal);
-        if(closing<-.05){const quality=contactEfficiency(hit.local,c),restitution=c.batRestitution*hit.restitutionScale*quality.efficiency,normalDelta=-(1+restitution)*closing/(1+c.mass/c.batEffectiveMass),contactArm=mul(hit.normal,-c.radius),surfaceVelocity=add(relative,cross(this.spin,contactArm)),tangent=sub(surfaceVelocity,mul(hit.normal,dot(surfaceVelocity,hit.normal))),tangentDelta=mul(unit(tangent),-Math.min(c.batFriction*normalDelta,length(tangent)/(3.5+c.mass/c.batEffectiveMass))),delta=add(mul(hit.normal,normalDelta),tangentDelta);
+        if(closing<-.05){const effectiveMass=effectiveBatMass(bat,hit.local,hit.normal,c.batEffectiveMass),quality=contactEfficiency(hit.local,c),restitution=c.batRestitution*hit.restitutionScale*quality.efficiency,normalDelta=-(1+restitution)*closing/(1+c.mass/effectiveMass),contactArm=mul(hit.normal,-c.radius),surfaceVelocity=add(relative,cross(this.spin,contactArm)),tangent=sub(surfaceVelocity,mul(hit.normal,dot(surfaceVelocity,hit.normal))),tangentDelta=mul(unit(tangent),-Math.min(c.batFriction*normalDelta,length(tangent)/(3.5+c.mass/effectiveMass))),delta=add(mul(hit.normal,normalDelta),tangentDelta);
         this.velocity=add(this.velocity,delta);this.spin=add(this.spin,mul(cross(contactArm,tangentDelta),2.5/(c.radius*c.radius)));this.position=add(add(before,mul(sub(this.position,before),hit.fraction)),mul(hit.normal,.002));const impulse=mul(delta,c.mass),lever=sub(batWorldPoint(hit.local,bat),bat.handPivot||batWorldPoint(v(0,.5,0),bat)),twistImpulse=clamp(dot(cross(lever,mul(impulse,-1)),axes.up)/c.batTwistInertia,-1.8,1.8);
         this.contact={position:copy(this.position),batLocalM:hit.local,relativeSpeedMps:length(relative),batSpeedMps:length(batVelocity),batPointVelocity:batVelocity,faceNormal:hit.normal,impulseNs:impulse,outgoingSpin:copy(this.spin),twistImpulse,...quality,edge:hit.edge,region:hit.region,restitutionScale:hit.restitutionScale,timeS:this.time,kinematics:bat.kinematics||null};this.event('BatContact',this.contact);}
 

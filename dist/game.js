@@ -1,3 +1,4 @@
+import {groundMaterial} from './realism/GroundSurfaceController.js';
 import {addBallStitching,addNearGrass,detailMaterial} from './realism/SurfaceDetail.js';
 import {buildWillowBat,createHuman} from './realism/PlayerBody.js';
 import {boot} from './play.js';
@@ -5,16 +6,16 @@ import * as THREE from './three.module.js';
 const $=id=>document.getElementById(id), canvas=$('game');
 let renderer;
 try{renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});}catch(e){$('panel').innerHTML='<h1>WebGL is unavailable</h1><p>Open this game in a browser with hardware acceleration enabled.</p>';throw e;}
-renderer.setPixelRatio(Math.min(devicePixelRatio,1.8));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.8));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.08;
 const scene=new THREE.Scene();scene.background=new THREE.Color('#afcbd5');scene.fog=new THREE.Fog('#b5c9cc',65,180);
 const camera=new THREE.PerspectiveCamera(64,innerWidth/innerHeight,.025,240);camera.position.set(.12,1.72,1.1);camera.lookAt(0,1.55,-20);
-scene.add(new THREE.HemisphereLight('#e0edff','#526235',2.2));const sun=new THREE.DirectionalLight('#ffdfb1',3.1);sun.position.set(-35,40,-25);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-45,right:45,top:45,bottom:-45,near:1,far:130});sun.shadow.bias=-.0004;scene.add(sun);
-const mat=(c,rough=1)=>new THREE.MeshStandardMaterial({color:c,roughness:rough});const grass=mat('#54834b'),clay=mat('#c2ac7b'),white=mat('#eee8d5'),navy=mat('#163b57'),skin=mat('#a97552');
+scene.add(new THREE.HemisphereLight('#d7e8ff','#455234',1.55));const sun=new THREE.DirectionalLight('#ffdfb1',3.1);sun.position.set(-35,30,-25);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-45,right:45,top:45,bottom:-45,near:1,far:130});sun.shadow.bias=-.0004;scene.add(sun);
+const mat=(c,rough=1)=>new THREE.MeshStandardMaterial({color:c,roughness:rough});const grass=groundMaterial(mat('#466b3e'),'grass'),clay=groundMaterial(mat('#b2a17e'),'pitch'),white=mat('#eee8d5'),navy=mat('#163b57'),skin=mat('#a97552');
 function mesh(geo,m,x,y,z,parent=scene){let o=new THREE.Mesh(geo,m);o.position.set(x,y,z);o.castShadow=true;o.receiveShadow=true;parent.add(o);return o;}
 function box(w,h,d,m,x,y,z,p){return mesh(new THREE.BoxGeometry(w,h,d),m,x,y,z,p);}
 function cylinder(r1,r2,h,m,x,y,z,p){return mesh(new THREE.CylinderGeometry(r1,r2,h,12),m,x,y,z,p);}
 mesh(new THREE.CircleGeometry(86,96),grass,0,-.035,-10).rotation.x=-Math.PI/2;
-for(let i=0;i<16;i++){let strip=box(8,.012,145,mat(i%2?'#5a8850':'#527e48'),(i-7.5)*8,-.019,-10);strip.receiveShadow=true;strip.castShadow=false;}
+for(let i=0;i<16;i++){let strip=box(8,.012,145,grass,(i-7.5)*8,-.019,-10);strip.receiveShadow=true;strip.castShadow=false;}
 box(3.05,.025,20.12,clay,0,-.02,-9.06);box(3.8,.01,22,mat('#a59a66'),0,-.035,-9.06);
 // Fine, deterministic pitch wear gives the surface depth without an image dependency.
 let seed=31;function random(){seed=(seed*16807)%2147483647;return(seed-1)/2147483646;}
@@ -32,7 +33,7 @@ function person(x,z){return createHuman(scene,x,z);}
 let bowler=person(.55,-27);
 box(.075,.07,.04,skin,0,-.005,0,bowler.hand);for(let i=0;i<4;i++){const finger=cylinder(.009,.011,.065,skin,-.028+i*.018,-.06,.006,bowler.hand);finger.rotation.x=.35;}box(.025,.055,.025,skin,.047,-.018,0,bowler.hand);
 let umpire=person(-.8,-23);umpire.torso.material=mat('#e7dfca');
-detailMaterial(clay,'soil');const nearGrass=addNearGrass(scene);
+const nearGrass=addNearGrass(scene);
 const ball=mesh(new THREE.SphereGeometry(.0361,20,16),mat('#b51e2e',.43),0,-5,0);const seam=new THREE.Mesh(new THREE.TorusGeometry(.0363,.0012,4,40),white);ball.add(seam);addBallStitching(ball);
 scene.add(camera);sun.shadow.camera.layers.enable(1);
 const batModel=buildWillowBat(),batRig=batModel.rig;scene.add(batRig);

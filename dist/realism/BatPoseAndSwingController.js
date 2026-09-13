@@ -1,11 +1,18 @@
+import {PhysicalBat} from './PhysicalBat.js';
+import {ActiveBodyController} from './BodyConstraints.js';
+import {intentFromControls,sanitizeIntent,resolveIntentPrior} from './BattingIntent.js';
+import {HumanShotController} from './HumanShotController.js';
 import {SHOTS} from './ShotIntentController.js';
 import {KineticChain} from './KineticChain.js';
 import {v,batBasis,sub,mul,length} from '../physics.js';
 export const BAT_GRIP_OFFSET=.50;
 export class BatPoseAndSwingController {
- constructor(){this.backlift='medium';this.shot='free';this.phase='stance';this.chain=new KineticChain();}
- reset(){this.chain.reset();}
- compute(input,dt){const shot=SHOTS[this.shot]||SHOTS.free,mirror=input.hand==='left'?-1:1,k=this.chain.step(input,shot,dt),lift={low:.4,medium:.8,high:1.15}[this.backlift]??.8;
+ constructor(){this.backlift='medium';this.shot='free';this.phase='stance';this.chain=new KineticChain();this.human=new HumanShotController(this.chain);this.backliftStyle='lateral';this.physical=new PhysicalBat();this.bodyController=new ActiveBodyController();this.physicalEnabled=false;}
+ reset(){this.chain.reset();this.human.reset();this.physical.reset();this.bodyController.reset();this.lastPhysical=null;}
+ observe(ball,velocity){this.human.observe(ball,velocity);}
+ impact(contact){this.human.impact(contact);if(this.physicalEnabled&&contact.impulseNs)this.physical.impulse(mul(contact.impulseNs,-1),contact.position);}
+ compute(input,dt){const intent=sanitizeIntent(intentFromControls(input));this.intent=intent;this.shot=resolveIntentPrior(intent,this.shot);const motor=Object.create(input);motor.target=intent.handPathBias;motor.foot=intent.footworkIntent;motor.face=intent.batFaceBias;motor.loft=intent.loftBias;motor.leave=intent.abort;motor.bodyYaw=intent.bodyYaw||0;motor.wristBias=intent.wristBias;motor.manualDepth=intent.manualDepth||0;if(motor.stroke)motor.stroke.power=intent.effort;const target=this.computeTarget(motor,dt);input.stroke=motor.stroke;if(!this.physicalEnabled)return target;target.intent=intent;this.bodyController.step(target,dt);const p=this.physical.step(target,intent,dt),axes=batBasis(p.yaw,p.loft,p.roll,p.twist),sweet={x:p.position.x-axes.up.x*.07,y:p.position.y-axes.up.y*.07,z:p.position.z-axes.up.z*.07};p.kinematics.batHeadVelocity=this.lastPhysical?mul(sub(sweet,this.lastPhysical),1/dt):v();p.kinematics.batHeadSpeed=length(p.kinematics.batHeadVelocity);this.lastPhysical=sweet;if(p.trails){p.trails.sweetSpot=sweet;p.trails.toe={x:p.position.x-axes.up.x*.28,y:p.position.y-axes.up.y*.28,z:p.position.z-axes.up.z*.28};}return p;}
+ computeTarget(input,dt){if(this.shot!=='free'){const p=this.human.compute(input,dt,this.shot,this.backlift,this.backliftStyle);this.phase=p.phase;return p;}const shot=SHOTS[this.shot]||SHOTS.free,mirror=input.hand==='left'?-1:1,k=this.chain.step(input,shot,dt),lift={low:.4,medium:.8,high:1.15}[this.backlift]??.8;
  // Joint motors control shoulder/elbow/wrist angles. Their resulting motion
  // determines the grip and blade. Input effort never sets bat velocity.
  this.phase=k.active?(k.age<.09?'backlift':k.age<.30?'downswing':'follow-through'):Math.abs(k.shoulderAngularVelocity)>.1?'recover':'stance';

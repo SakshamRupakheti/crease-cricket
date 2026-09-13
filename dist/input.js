@@ -1,9 +1,13 @@
 import {BatPoseAndSwingController} from './realism/BatPoseAndSwingController.js';
 import {clamp,v,batBasis} from './physics.js';
 export class BatController {
-  constructor(){this.poseController=new BatPoseAndSwingController();this.context='ready';this.mode='mouse';this.sensitivity=1;this.invert=false;this.hand='right';this.target=v(.15,.72,.03);this.position={...this.target};this.face=0;this.loft=0;this.foot=v();this.stroke=null;this.clock=0;this.leave=false;this.lastPointer=null;this.wheelBurst=null;this.pointers=new Map();this.active=true;this.onActivity=()=>{};this.keys=new Set();this.lastStroke=-1;}
-  reset(){this.poseController.reset();this.target=v(this.hand==='left'?-.15:.15,.72,.03);this.position={...this.target};this.stroke=null;this.leave=false;this.lastPointer=null;this.wheelBurst=null;this.pointers.clear();this.keys.clear();this.clock=0;this.lastStroke=-1;this.foot=v();}
-  swing(strength=.55){if(!this.active||this.clock-this.lastStroke<.28)return;this.lastStroke=this.clock;this.stroke={age:0,power:clamp(strength,.15,1)};this.leave=false;this.onActivity('STROKE');}
+  constructor(){this.poseController=new BatPoseAndSwingController();this.context='ready';this.mode='mouse';this.sensitivity=1;this.invert=false;this.hand='right';this.target=v(.15,.72,.03);this.position={...this.target};this.face=0;this.loft=0;this.foot=v();this.stroke=null;this.clock=0;this.leave=false;this.lastPointer=null;this.wheelBurst=null;this.pointers=new Map();this.active=true;this.onActivity=()=>{};this.intentOverrides={};this.keys=new Set();this.lastStroke=-1;}
+  submitIntent(intent){this.intentOverrides={...this.intentOverrides,...intent};}
+ releaseTopHand(){this.intentOverrides.releaseTopHand=true;}
+ releaseBottomHand(){this.intentOverrides.releaseBottomHand=true;}
+ releaseBothHands(){this.releaseTopHand();this.releaseBottomHand();}
+ reset(){this.intentOverrides={};this.poseController.reset();this.target=v(this.hand==='left'?-.15:.15,.72,.03);this.position={...this.target};this.stroke=null;this.leave=false;this.lastPointer=null;this.wheelBurst=null;this.pointers.clear();this.keys.clear();this.clock=0;this.lastStroke=-1;this.foot=v();}
+  swing(strength=.55){if(!this.active||this.clock-this.lastStroke<.28||(this.poseController.shot!=='free'&&this.poseController.human.active))return;this.lastStroke=this.clock;this.stroke={age:0,power:clamp(strength,.15,1)};this.leave=false;this.onActivity('STROKE');}
   move(dx,dy,elapsed,source='mouse'){
     if(!this.active)return;const scale=this.sensitivity*(source==='trackpad'?.003:.004);this.target.x=clamp(this.target.x+dx*scale,-.95,.95);this.target.y=clamp(this.target.y-dy*scale,.28,1.42);this.leave=false;
     const speed=-dy/Math.max(.008,elapsed);if(dy<-3&&speed>100)this.swing(speed/1200);
