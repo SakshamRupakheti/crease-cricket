@@ -10,3 +10,8 @@ export class ActiveBodyController {
  p.motion.head=spring('head',p.motion.head,280,34);p.motion.bodyPosition=spring('bodyPosition',p.motion.bodyPosition);k.pelvisAngle=spring('pelvis',clamp(k.pelvisAngle,...JOINT_LIMITS.pelvisYaw));k.thoraxAngle=spring('thorax',clamp(k.thoraxAngle,...JOINT_LIMITS.thoraxYaw));if(margin<-.08){p.motion.bodyPosition.x+=clamp(nearest.x-com.x,-.04,.04);p.motion.bodyPosition.z+=clamp(nearest.z-com.z,-.04,.04);}p.motion.leadElbow=clamp(p.motion.leadElbow,...JOINT_LIMITS.elbow);p.motion.trailElbow=clamp(p.motion.trailElbow,...JOINT_LIMITS.elbow);}
  k.balance=clamp((margin+.16)/.30,0,1);return p;}
 }
+export function calculateHandCompliance(gripForces={top:0,bottom:0}, maxThreshold=400){
+  const topDeflection = Math.min(0.04, ((gripForces.top||0)/maxThreshold)*0.04);
+  const bottomDeflection = Math.min(0.04, ((gripForces.bottom||0)/maxThreshold)*0.04);
+  return { topDeflection, bottomDeflection, totalCompliance: (topDeflection + bottomDeflection)/2 };
+}

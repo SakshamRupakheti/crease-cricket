@@ -6,6 +6,12 @@ export class GroundSurfaceController {
  const dustGeom=new THREE.BufferGeometry();dustGeom.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(24),3));this.dust=new THREE.Points(dustGeom,new THREE.PointsMaterial({color:'#c4b58c',size:.017,transparent:true,opacity:0,depthWrite:false}));scene.add(this.dust);this.dustAge=1;
  this.ballShadow=new THREE.Mesh(new THREE.CircleGeometry(.04,20),new THREE.MeshBasicMaterial({color:'#14291b',transparent:true,opacity:.3,depthWrite:false}));this.ballShadow.rotation.x=-Math.PI/2;scene.add(this.ballShadow);this.age=0;}
  footprint(foot){const i=this.wearIndex++%120;this.dummy.position.set(foot.x,-foot.z,.028);this.dummy.rotation.set(0,0,.2);this.dummy.scale.set(.75,1.8,1);this.dummy.updateMatrix();this.wear.setMatrixAt(i,this.dummy.matrix);this.wear.count=Math.min(120,this.wearIndex);this.wear.instanceMatrix.needsUpdate=true;this.cracks.material.opacity=Math.min(.76,.5+this.wearIndex*.002);}
+  getPitchSurfaceState(x, z){
+    const distFrontCrease = Math.abs(z - 1.0), distBackCrease = Math.abs(z + 18.4);
+    const inCreaseZone = (distFrontCrease < 1.8 || distBackCrease < 1.8) && Math.abs(x) < 1.0;
+    const wearFactor = Math.min(1.0, (this.wearIndex * 0.005) + (inCreaseZone ? 0.25 : 0.0));
+    return { wearFactor, restitutionMult: 1.0 - (wearFactor * 0.08), frictionMult: 1.0 + (wearFactor * 0.15), seamKick: wearFactor * 0.025 };
+  }
  event(event){if(event.type==='BallPitched'){this.dustOrigin={...event.position};this.dustAge=0;}}
  update(dt,ball){this.age+=dt;this.dustAge+=dt;if(this.dustOrigin&&this.dustAge<.22){const a=this.dust.geometry.attributes.position;for(let i=0;i<8;i++){const angle=i*2.4;a.setXYZ(i,this.dustOrigin.x+Math.sin(angle)*this.dustAge*.15,.03+this.dustAge*.25,this.dustOrigin.z+Math.cos(angle)*this.dustAge*.15);}a.needsUpdate=true;this.dust.material.opacity=(1-this.dustAge/.22)*.22;}else this.dust.material.opacity=0;this.ballShadow.visible=ball.y>0&&ball.y<8;this.ballShadow.position.set(ball.x,.029,ball.z);this.ballShadow.scale.setScalar(1+Math.max(0,ball.y)*.35);this.ballShadow.material.opacity=.30/(1+Math.max(0,ball.y)*.55);}
 }

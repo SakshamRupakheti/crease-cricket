@@ -33,7 +33,6 @@ function local(p,b){const q=sub(p,b.position),axes=batBasis(b.yaw,b.loft,b.roll,
 // Conservative advancement of a swept sphere against the actual blade triangles.
 const mesh=bladeMesh(),triangles=[];
 for(let i=0;i<mesh.indices.length;i+=3)triangles.push(mesh.indices.slice(i,i+3).map(k=>v(...mesh.positions.slice(k*3,k*3+3))));
-// Closest point on triangle (Voronoi regions), including edges and vertices.
 function closest(p,a,b,c){const ab=sub(b,a),ac=sub(c,a),ap=sub(p,a),d1=dot(ab,ap),d2=dot(ac,ap);if(d1<=0&&d2<=0)return a;const bp=sub(p,b),d3=dot(ab,bp),d4=dot(ac,bp);if(d3>=0&&d4<=d3)return b;const vc=d1*d4-d3*d2;if(vc<=0&&d1>=0&&d3<=0)return add(a,mul(ab,d1/(d1-d3)));const cp=sub(p,c),d5=dot(ab,cp),d6=dot(ac,cp);if(d6>=0&&d5<=d6)return c;const vb=d5*d2-d1*d6;if(vb<=0&&d2>=0&&d6<=0)return add(a,mul(ac,d2/(d2-d6)));const va=d3*d6-d5*d4;if(va<=0&&d4-d3>=0&&d5-d6>=0)return add(b,mul(sub(c,b),(d4-d3)/((d4-d3)+(d5-d6))));return add(a,add(mul(ab,vb/(va+vb+vc)),mul(ac,vc/(va+vb+vc))));}
 export function sweepBat(from,to,previousBat,bat,radius){const a=local(from,previousBat),b=local(to,bat),d=sub(b,a),travel=length(d);if(Math.min(a.x,b.x)>.055+radius||Math.max(a.x,b.x)<-.055-radius||Math.min(a.y,b.y)>.663+radius||Math.max(a.y,b.y)<-.28-radius||Math.min(a.z,b.z)>.062+radius||Math.max(a.z,b.z)<-.019-radius)return null;
  let t=0;for(let step=0;step<48&&t<=1;step++){const p=add(a,mul(d,t));let distance=Infinity,point=null;for(const tri of triangles){const q=closest(p,...tri),dist=length(sub(p,q));if(dist<distance){distance=dist;point=q;}}
@@ -42,6 +41,38 @@ export function sweepBat(from,to,previousBat,bat,radius){const a=local(from,prev
  if(distance<=radius+1e-6){const n=unit(sub(p,point)),axes=batBasis(bat.yaw,bat.loft,bat.roll,bat.twist),region=contactRegion(point,n);return {fraction:t,normal:add(add(mul(axes.right,n.x),mul(axes.up,n.y)),mul(axes.normal,-n.z)),local:point,region,edge:region.includes('edge'),restitutionScale:REGION_RESTITUTION[region]};}if(travel<1e-12)return null;t+=(distance-radius)/travel;}
  return null;
 }
+
+export function getPitchWearProperties(x, z, wearIndex=0){
+  const distFront = Math.abs(z - 1.0), distBack = Math.abs(z + 18.4);
+  const inCreaseZone = (distFront < 1.8 || distBack < 1.8) && Math.abs(x) < 1.0;
+  const wearFactor = Math.min(1.0, (wearIndex * 0.005) + (inCreaseZone ? 0.25 : 0.0));
+  return { wearFactor, restitutionMult: 1.0 - (wearFactor * 0.08), frictionMult: 1.0 + (wearFactor * 0.15), seamKick: wearFactor * 0.025 };
+}
+
+export const OBSTACLES = Object.freeze({
+  stumps: [{ min: v(-0.1143, 0, 0.98), max: v(0.1143, 0.711, 1.02), type: 'stump' }],
+  pads: [
+    { min: v(-0.35, 0.05, 0.85), max: v(-0.05, 0.55, 1.15), type: 'pad_left' },
+    { min: v(0.05, 0.05, 0.85), max: v(0.35, 0.55, 1.15), type: 'pad_right' }
+  ]
+});
+
+export function sweepBatObstacles(batPos, prevPos){
+  const pos = batPos?.position || batPos;
+  if(!pos) return null;
+  for(const pad of OBSTACLES.pads){
+    if(pos.x >= pad.min.x && pos.x <= pad.max.x && pos.y >= pad.min.y && pos.y <= pad.max.y && pos.z >= pad.min.z && pos.z <= pad.max.z){
+      return { obstacle: pad.type, normal: v(0, 0, -1), depth: 0.025 };
+    }
+  }
+  for(const stump of OBSTACLES.stumps){
+    if(pos.x >= stump.min.x && pos.x <= stump.max.x && pos.y >= stump.min.y && pos.y <= stump.max.y && pos.z >= stump.min.z && pos.z <= stump.max.z){
+      return { obstacle: stump.type, normal: v(0, 1, 0), depth: 0.035 };
+    }
+  }
+  return null;
+}
+
 export class Ledger {
   constructor(rules=RULES){this.rules=copy(rules);this.deliveries=0;this.legalBalls=0;this.contacts=0;this.wickets=0;this.runs=0;this.boundaryRuns=0;this.events=[];this.committed=new Set();}
   commit(id,events){if(this.committed.has(id))return false;this.committed.add(id);const has=t=>events.some(e=>e.type===t);const illegal=has('NoBallDetected')||has('WideDetected');this.deliveries++;if(!illegal)this.legalBalls++;if(has('BatContact'))this.contacts++;if(has('WicketBroken')&&!has('NoBallDetected'))this.wickets++;const boundary=events.find(e=>e.type==='BoundaryCrossed');this.boundaryRuns+=boundary?.runs||0;this.runs+=(boundary?.runs||0)+(illegal?1:0);this.events.push(Object.freeze({type:'ScoreCommitted',deliveryId:id,legalBallIndex:this.legalBalls,contacts:this.contacts,wickets:this.wickets,runs:this.runs}));return true;}
@@ -64,7 +95,12 @@ export class BallSimulation {
     const seamDelta=cross(this.spin,this.seamNormal);this.seamNormal=unit(add(this.seamNormal,mul(seamDelta,STEP)));this.spin=mul(this.spin,Math.exp(-c.spinDecay*STEP));
     if(this.position.y<=c.radius&&this.velocity.y<0){
       const incoming=copy(this.velocity),onPitch=Math.abs(this.position.x)<1.525&&this.position.z>=-19.12&&this.position.z<=1;
-      const e=onPitch?this.pitch.restitution:.35,mu=onPitch?this.pitch.friction:.65;
+      let e=onPitch?this.pitch.restitution:.35,mu=onPitch?this.pitch.friction:.65;
+      if(onPitch){
+        const wear=getPitchWearProperties(this.position.x, this.position.z, this.bounces);
+        e*=wear.restitutionMult;mu*=wear.frictionMult;
+        if(wear.seamKick>0&&Math.abs(this.seamNormal.y)<.3){this.velocity.x+=(this.seed%2===0?1:-1)*wear.seamKick;}
+      }
       const normalDelta=-(1+e)*incoming.y;
       const slip=v(incoming.x+c.radius*this.spin.z,0,incoming.z-c.radius*this.spin.x),slipSpeed=length(slip);
       const impulse=mul(unit(slip),-Math.min(mu*normalDelta,slipSpeed*2/7));this.velocity.x+=impulse.x;this.velocity.z+=impulse.z;this.velocity.y=-incoming.y*e;
