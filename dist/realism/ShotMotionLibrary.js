@@ -26,6 +26,25 @@ const definitions={
  ramp:{family:'loft',duration:.89,t:[0,.18,.35,.54,.68,.84,1],h:[[.12,1.09,.16],[.12,1.10,.18],[.02,1.01,.17],[-.015,.94,.12],[.015,1.03,.20],[.065,1.08,.24],[.12,1.09,.16]],o:[[0,-.35,-.12],[.02,-.55,.08],[0,.45,.20],[0,1.13,.12],[0,1.30,.12],[.03,.67,.05],[0,-.35,-.12]],p:[0,-.01,-.025,-.04,-.045,-.02,0],r:[0,-.01,-.025,-.02,-.03,-.015,0],f:[-.23,0,.22],b:[.24,0,.87],head:[-.04,-.20,.06],el:[.88,.84,.91,1.08,1.13,.98,.88],er:[1.45,1.49,1.52,1.44,1.46,1.45,1.45],w:[0,0,0,.015,.035,.02,0],shoulder:[-.02,-.04,.01],trail:[.02,-.03,.025],weight:.45,contact:3,soft:true},
  uppercut:{family:'loft',duration:.91,t:[0,.16,.31,.51,.71,.86,1],h:[[.14,1.12,.16],[.22,1.35,.23],[.29,1.44,.17],[.41,1.43,.09],[.46,1.49,.18],[.27,1.44,.27],[.14,1.12,.16]],o:[[0,-.48,-.17],[-.24,-.91,-.57],[-.49,-.45,-1.1],[-.80,.45,-1.26],[-1.13,.8,-1.49],[-1.02,1.05,-1.70],[0,-.48,-.17]],p:[0,.025,.07,.18,.32,.17,0],r:[0,-.04,.01,.27,.52,.26,0],f:[-.06,0,.48],b:[.33,0,1.01],head:[.12,.015,.13],el:[.88,.64,.67,1.13,1.42,1.01,.88],er:[1.42,1.56,1.58,1.18,1.44,1.22,1.42],w:[0,0,0,.02,-.06,-.10,0],shoulder:[.07,.025,.015],trail:[.035,.015,.04],weight:.29,contact:3}
 };
+// Research-informed authoring: the blade extends in front of the batter.
+// These are procedural priors, not measured motion capture. See batting-research.md.
+const driveAngles={straight:0,offdrive:.30,cover:.65,ondrive:-.35,loft:0};
+// A visible, relaxed guard beside the body; pickup still moves behind the hip.
+for(const d of Object.values(definitions)){d.t[5]=Math.min(d.t[5],.78);for(const i of [0,6]){d.h[i]=[.26,1.10,-.08];d.o[i]=[0,.85,.40];}}
+for(const [id,angle] of Object.entries(driveAngles)){
+ const d=definitions[id],side=Math.sin(angle),forward=Math.cos(angle);
+ d.o[3][0]=angle;
+ d.h[4]=[d.h[3][0]+side*.13,1.20+(id==='loft'?.12:0),d.h[3][2]-.14];
+ d.toeDirections={3:[side*.08,-.994,-forward*.08],4:[side*.96,.20,-forward*.96],5:[side*.60,.78,-forward*.18]};
+}
+for(const [id,sign] of Object.entries({pull:-1,hook:-1,sweep:-1,slog:-1,cut:1,reverse:1,uppercut:1})){
+ const d=definitions[id];
+ // Open the bat from pickup into an arc in front, then around the outside.
+ // Positive z is behind the batter: never aim the toe there at contact.
+ d.o[3][0]=sign*1.30;d.o[4][0]=sign*2.25;d.o[5][0]=sign*2.65;
+ d.h[3][2]-=.09;d.h[4][2]=-.10;
+ d.toeDirections={2:[-sign*.78,.25,-.32],3:[sign*.08,id==='slog'?.12:-.13,-.98],4:[sign*.88,id==='slog'||id==='uppercut'?.40:.10,-.46],5:[sign*.65,.68,.10]};
+}
 const vec=a=>v(...a),lerp=(a,b,t)=>a+(b-a)*t;
 export function sampleCurve(curve,t){const keys=curve;let i=0;while(i<keys.length-2&&t>keys[i+1].t)i++;const a=keys[i],b=keys[i+1],u=clamp((t-a.t)/(b.t-a.t),0,1),prev=keys[Math.max(0,i-1)],next=keys[Math.min(keys.length-1,i+2)];const scalar=(x,y,p,n)=>{const m0=i===0?0:(y-p)/(b.t-prev.t)*.65,m1=i+1===keys.length-1?0:(n-x)/(next.t-a.t)*.65,span=b.t-a.t;return (2*u**3-3*u*u+1)*x+(u**3-2*u*u+u)*span*m0+(-2*u**3+3*u*u)*y+(u**3-u*u)*span*m1;};return typeof a.value==='number'?scalar(a.value,b.value,prev.value,next.value):Object.fromEntries(['x','y','z'].map(k=>[k,scalar(a.value[k],b.value[k],prev.value[k],next.value[k])]));}
 const curve=(times,values)=>times.map((t,i)=>({t,value:Array.isArray(values[i])?vec(values[i]):values[i]}));
@@ -33,13 +52,20 @@ function compile(id,d){const c=d.contact,t=d.t,frontStart=[-.18,0,.34],backStart
  if(d.family==='back'||d.family==='cross'){front[1]=frontStart;}back[5]=d.b;const frontCurve=curve(t,front),backCurve=curve(t,back);frontCurve.splice(6,0,{t:.94,value:vec(frontStart)});backCurve.splice(6,0,{t:.94,value:vec([lerp(d.b[0],backStart[0],.7),.035,lerp(d.b[2],backStart[2],.7)])});
  const head=t.map((_,i)=>i===0||i===6?[0,0,0]:i===1?d.head.map(x=>x*.3):i===2?d.head.map(x=>x*.85):i===5?d.head.map(x=>x*.5):d.head);
  const shoulder=(value,lag)=>t.map((_,i)=>value.map(x=>x*(i===0||i===6?0:i===1?.12:i===2?(lag?.35:.9):i===3?1:i===4?(lag?1.4:1):.4)));
- const tops=[],bottoms=[],toes=[];for(let i=0;i<t.length;i++){const a=batBasis(...d.o[i]),h=vec(d.h[i]);tops.push(v(h.x+a.up.x*.06,h.y+a.up.y*.06,h.z+a.up.z*.06));bottoms.push(v(h.x-a.up.x*.035,h.y-a.up.y*.035,h.z-a.up.z*.035));toes.push(v(h.x-a.up.x*.78,h.y-a.up.y*.78,h.z-a.up.z*.78));}
+ const tops=[],bottoms=[],toes=[];for(let i=0;i<t.length;i++){let a=batBasis(...d.o[i]);const h=vec(d.h[i]);if(d.toeDirections?.[i]){const toe=new THREE.Vector3(...d.toeDirections[i]).normalize(),top=v(h.x-toe.x*.06,h.y-toe.y*.06,h.z-toe.z*.06),bottom=v(h.x+toe.x*.035,h.y+toe.y*.035,h.z+toe.z*.035),o=gripOrientation(top,bottom,vec(d.o[i]));d.o[i]=[o.yaw,o.loft,o.roll];a=batBasis(...d.o[i]);}tops.push(v(h.x+a.up.x*.06,h.y+a.up.y*.06,h.z+a.up.z*.06));bottoms.push(v(h.x-a.up.x*.035,h.y-a.up.y*.035,h.z-a.up.z*.035));toes.push(v(h.x-a.up.x*.78,h.y-a.up.y*.78,h.z-a.up.z*.78));}
  return Object.freeze({id,family:SHOT_FAMILIES[d.family],duration:d.duration,contactWindow:[t[c]-.035,t[c]+.035],contactPhase:t[c],soft:d.soft||false,kneel:!!d.kneel,stance:{frontFoot:vec(frontStart),backFoot:vec(backStart)},trigger:{end:t[1]},footPath:{front:frontCurve,back:backCurve},headPath:curve(t,head),pelvisYawCurve:curve(t,d.p),pelvisPitchCurve:curve(t,head.map(h=>-h[2]*.28)),thoraxYawCurve:curve(t,d.r),leadShoulderCurve:curve(t,shoulder(d.shoulder,false)),trailShoulderCurve:curve(t,shoulder(d.trail,true)),leadElbowCurve:curve(t,d.el),trailElbowCurve:curve(t,d.er),topHandSpline:curve(t,tops),bottomHandSpline:curve(t,bottoms),batHeadPath:curve(t,toes),batOrientationCurve:curve(t,d.o),wristCurve:curve(t,d.w),weightCurve:curve(t,[.5,.5+(d.weight-.5)*.2,d.weight,d.weight,d.weight,.55,.5]),backlift:{lateral:true,end:t[2]},followThrough:{start:t[3],end:t[5]},recovery:{start:t[5],end:1}});
 }
 export const SHOT_MOTIONS=Object.freeze(Object.fromEntries(Object.entries(definitions).map(([id,d])=>[id,compile(id,d)])));
 export const BLEND_PAIRS=[['straight','ondrive'],['straight','offdrive'],['offdrive','cover'],['ondrive','flick'],['glance','flick'],['cut','latecut'],['pull','hook'],['sweep','slog']];
 export function canBlend(a,b){return a===b||BLEND_PAIRS.some(pair=>pair.includes(a)&&pair.includes(b));}
-export function sampleMotion(id,t){const p=SHOT_MOTIONS[id]||SHOT_MOTIONS.straight;return {profile:p,frontFoot:sampleCurve(p.footPath.front,t),backFoot:sampleCurve(p.footPath.back,t),head:sampleCurve(p.headPath,t),pelvis:sampleCurve(p.pelvisYawCurve,t),pitch:sampleCurve(p.pelvisPitchCurve,t),thorax:sampleCurve(p.thoraxYawCurve,t),leadShoulder:sampleCurve(p.leadShoulderCurve,t),trailShoulder:sampleCurve(p.trailShoulderCurve,t),leadElbow:sampleCurve(p.leadElbowCurve,t),trailElbow:sampleCurve(p.trailElbowCurve,t),top:sampleCurve(p.topHandSpline,t),bottom:sampleCurve(p.bottomHandSpline,t),orientation:sampleCurve(p.batOrientationCurve,t),wrist:sampleCurve(p.wristCurve,t),weight:sampleCurve(p.weightCurve,t)};}
+const rotationCache=new WeakMap();
+function sampleGrip(p,t){
+ let rotations=rotationCache.get(p);if(!rotations){rotations=p.batOrientationCurve.map(k=>{const a=batBasis(k.value.x,k.value.y,k.value.z),vector=p=>new THREE.Vector3(p.x,p.y,p.z);return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(vector(a.right),vector(a.up),vector(a.normal).negate()));});rotationCache.set(p,rotations);}
+ let i=0;const keys=p.batOrientationCurve;while(i<keys.length-2&&t>keys[i+1].t)i++;let u=clamp((t-keys[i].t)/(keys[i+1].t-keys[i].t),0,1);u=u*u*(3-2*u);
+ const q=rotations[i].clone().slerp(rotations[i+1],u),up=new THREE.Vector3(0,1,0).applyQuaternion(q),normal=new THREE.Vector3(0,0,-1).applyQuaternion(q),a=sampleCurve(p.topHandSpline,t),b=sampleCurve(p.bottomHandSpline,t),mid=v(...['x','y','z'].map(k=>b[k]+(a[k]-b[k])*.035/.095)),top=v(...['x','y','z'].map(k=>mid[k]+up[k]*.06)),bottom=v(...['x','y','z'].map(k=>mid[k]-up[k]*.035));
+ const o=gripOrientation(top,bottom,v(Math.atan2(normal.x,-normal.z),Math.asin(clamp(normal.y,-1,1)),0));return {top,bottom,orientation:v(o.yaw,o.loft,o.roll)};
+}
+export function sampleMotion(id,t){const p=SHOT_MOTIONS[id]||SHOT_MOTIONS.straight;return {profile:p,frontFoot:sampleCurve(p.footPath.front,t),backFoot:sampleCurve(p.footPath.back,t),head:sampleCurve(p.headPath,t),pelvis:sampleCurve(p.pelvisYawCurve,t),pitch:sampleCurve(p.pelvisPitchCurve,t),thorax:sampleCurve(p.thoraxYawCurve,t),leadShoulder:sampleCurve(p.leadShoulderCurve,t),trailShoulder:sampleCurve(p.trailShoulderCurve,t),leadElbow:sampleCurve(p.leadElbowCurve,t),trailElbow:sampleCurve(p.trailElbowCurve,t),...sampleGrip(p,t),wrist:sampleCurve(p.wristCurve,t),weight:sampleCurve(p.weightCurve,t)};}
 export function blendMotion(a,b,amount){if(!canBlend(a.profile.id,b.profile.id))return a;const out={...a};for(const k of Object.keys(a)){if(k==='profile')continue;if(typeof a[k]==='number')out[k]=lerp(a[k],b[k],amount);else out[k]=v(...['x','y','z'].map(axis=>lerp(a[k][axis],b[k][axis],amount)));}return out;}
 // Recover the collision engine's basis angles from the handle constrained by two hands.
 export function gripOrientation(top,bottom,face,twist=0){const up=new THREE.Vector3(top.x-bottom.x,top.y-bottom.y,top.z-bottom.z).normalize(),reference=batBasis(face.x,face.y,face.z),normal=new THREE.Vector3(reference.normal.x,reference.normal.y,reference.normal.z);normal.addScaledVector(up,-normal.dot(up)).normalize();const right=new THREE.Vector3().crossVectors(normal,up).normalize();normal.crossVectors(up,right).normalize();const loft=Math.asin(clamp(normal.y,-1,1)),yaw=Math.atan2(normal.x,-normal.z),base=batBasis(yaw,loft),roll=Math.atan2(-up.dot(new THREE.Vector3(base.right.x,base.right.y,base.right.z)),up.dot(new THREE.Vector3(base.up.x,base.up.y,base.up.z)));return {yaw,loft,roll,twist};}

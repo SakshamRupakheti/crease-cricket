@@ -8,6 +8,6 @@ export class ObservedGaze {
  if(contact&&this.contactAt<0){this.contactAt=this.time;this.hold={...sample.p};}this.stage=state==='runup'?'release region':state==='ready'?'preparation':'early flight';let target={...sample.p};
  if(state==='flight'&&sample.p.z>-8&&vel.y<-.5){const t=(vel.y+Math.sqrt(vel.y*vel.y+2*9.81*Math.max(0,sample.p.y-.036)))/9.81;if(t>0&&t<.12){target=add(sample.p,mul(vel,t*.35));this.stage='bounce anticipation';}}
  if(state==='flight'&&vel.y>.5)this.stage='post-bounce';if(this.time-this.contactAt<this.config.contactHold){target=this.hold;this.stage='impact hold';}else if(this.contactAt>0)this.stage='outgoing ball';
- const d=sub(target,eye);return {yaw:clamp(Math.atan2(-d.x,-d.z),-2.62,2.62),pitch:clamp(Math.atan2(d.y,Math.hypot(d.x,d.z)),-1.3,.48),stage:this.stage};
+ const d=sub(target,eye);return {yaw:clamp(Math.atan2(-d.x,-d.z),-2.62,2.62),pitch:clamp(Math.atan2(d.y,Math.hypot(d.x,d.z)),-1.3,contact?.95:.48),stage:this.stage};
  }
 }
