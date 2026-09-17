@@ -1,0 +1,218 @@
+using System;
+using UnityEngine;
+using Crease;
+
+public class CreasePreview : MonoBehaviour
+{
+    [Serializable] public class Sample { public float time; public Vector3 position, up, forward, head, top, bottom; }
+    [Serializable] public class Clip { public string id, hand; public Sample[] samples; }
+    [Serializable] public class Library { public int schemaVersion; public string sourceHash; public Clip[] clips; }
+
+    private Library library;
+    private Camera eye;
+    private GameObject ballObj;
+    private PlayerBodyUnity playerBody;
+    private PhysicalBatUnity physicalBat;
+    private CreasePhysics creasePhysics;
+
+    private int selectedClip;
+    private float clock;
+    private float lastMove;
+    private float mouseDistance;
+    private Vector2 gesture;
+    private bool playing;
+    private bool trackpad;
+    private string status = "CREASE Unity — Full Parity Engine & Visual Rig Active";
+
+    private Material willowMat, whiteMat, greenMat, pitchMat;
+
+    private Material CreateMaterial(Color color)
+    {
+        return new Material(Shader.Find("Standard")) { color = color };
+    }
+
+    private GameObject Shape(string name, PrimitiveType type, Vector3 pos, Vector3 scale, Material mat, bool collision = true)
+    {
+        var obj = GameObject.CreatePrimitive(type);
+        obj.name = name;
+        obj.transform.position = pos;
+        obj.transform.localScale = scale;
+        obj.GetComponent<Renderer>().sharedMaterial = mat;
+        if (!collision) Destroy(obj.GetComponent<Collider>());
+        return obj;
+    }
+
+    void Start()
+    {
+        var text = Resources.Load<TextAsset>("crease-motions");
+        if (!text)
+        {
+            status = "Missing motion export asset. Run node tools/export-unity.mjs.";
+            enabled = false;
+            return;
+        }
+
+        library = JsonUtility.FromJson<Library>(text.text);
+        physicalBat = new PhysicalBatUnity();
+        creasePhysics = new CreasePhysics();
+
+        willowMat = CreateMaterial(new Color(0.82f, 0.65f, 0.38f));
+        whiteMat = CreateMaterial(new Color(0.94f, 0.94f, 0.89f));
+        greenMat = CreateMaterial(new Color(0.13f, 0.28f, 0.14f));
+        pitchMat = CreateMaterial(new Color(0.65f, 0.53f, 0.34f));
+
+        // Environment
+        Shape("Outfield Stadium", PrimitiveType.Cube, new Vector3(0, -0.15f, 20), new Vector3(100, 0.2f, 100), greenMat);
+        Shape("Worn Turf Pitch", PrimitiveType.Cube, new Vector3(0, -0.035f, 9), new Vector3(3.05f, 0.06f, 22), pitchMat);
+
+        foreach (float z in new[] { -0.65f, 19.47f })
+        {
+            Shape("Crease Line", PrimitiveType.Cube, new Vector3(0, 0.003f, z), new Vector3(3, 0.004f, 0.025f), whiteMat, false);
+            for (int i = -1; i <= 1; i++)
+            {
+                Shape("Stump", PrimitiveType.Cylinder, new Vector3(i * 0.114f, 0.355f, z - 0.6f), new Vector3(0.035f, 0.355f, 0.035f), willowMat);
+            }
+        }
+
+        // Lighting
+        var light = new GameObject("Sun").AddComponent<Light>();
+        light.type = LightType.Directional;
+        light.intensity = 1.3f;
+        light.shadows = LightShadows.Soft;
+        light.transform.rotation = Quaternion.Euler(38, -28, 0);
+        RenderSettings.ambientLight = new Color(0.55f, 0.62f, 0.70f);
+
+        // Camera
+        eye = new GameObject("Striker Eyes").AddComponent<Camera>();
+        eye.tag = "MainCamera";
+        eye.fieldOfView = 82;
+        eye.nearClipPlane = 0.02f;
+        eye.farClipPlane = 200;
+        eye.backgroundColor = new Color(0.57f, 0.73f, 0.84f);
+        eye.clearFlags = CameraClearFlags.SolidColor;
+        eye.gameObject.AddComponent<AudioListener>();
+
+        // Player Rig & Visuals
+        var playerObj = new GameObject("CREASE 3D Player Body");
+        playerBody = playerObj.AddComponent<PlayerBodyUnity>();
+        playerBody.BuildPlayer();
+
+        // Practice Ball
+        ballObj = Shape("Aerodynamic Ball", PrimitiveType.Sphere, new Vector3(0, 2.0f, 18.0f), Vector3.one * 0.0722f, whiteMat);
+
+        ApplySample(library.clips[0].samples[0]);
+    }
+
+    private void ApplySample(Sample s)
+    {
+        Quaternion batRot = Quaternion.LookRotation(s.forward, s.up);
+        physicalBat.Step(s.position, batRot, 1f, 1f, 0.001f);
+        playerBody.UpdatePose(s.top, s.bottom, physicalBat.position, physicalBat.rotation, physicalBat.topGripForce, physicalBat.bottomGripForce);
+
+        eye.transform.position = s.head;
+        eye.transform.rotation = Quaternion.Euler(19.5f, 0, 0);
+    }
+
+    private void Swing()
+    {
+        clock = 0;
+        playing = true;
+        status = "Shot Motion: " + library.clips[selectedClip].id.ToUpper() + " (" + library.clips[selectedClip].hand + ")";
+    }
+
+    private void BowlDelivery()
+    {
+        Vector3 releasePos = new Vector3(0.2f, 2.1f, 18.0f);
+        Vector3 releaseVel = new Vector3(-0.1f, -1.2f, -28.0f);
+        Vector3 releaseSpin = new Vector3(20f, 0f, 10f);
+        Vector3 seamNormal = new Vector3(0.1f, 0f, 0.99f);
+
+        creasePhysics.ReleaseBall(releasePos, releaseVel, releaseSpin, seamNormal);
+        status = "Ball Delivered — Dynamic pitch wear & aerodynamics active!";
+    }
+
+    void Update()
+    {
+        if (library == null) return;
+
+        if (Input.GetKeyDown(KeyCode.Space)) BowlDelivery();
+        if (Input.GetKeyDown(KeyCode.Return)) Swing();
+
+        Vector2 delta = trackpad ? Input.mouseScrollDelta : new Vector2(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y"));
+        if (delta.sqrMagnitude > 0.01f && Input.mousePosition.y < Screen.height - 125)
+        {
+            gesture += delta;
+            mouseDistance += delta.magnitude;
+            lastMove = Time.time;
+        }
+
+        if (mouseDistance > 2 && Time.time - lastMove > 0.12f)
+        {
+            float angle = Mathf.Atan2(gesture.y, gesture.x) * Mathf.Rad2Deg;
+            string shot = Mathf.Abs(angle) > 150 ? "pull" : Mathf.Abs(angle) < 25 ? "cut" : angle > 115 ? "ondrive" : angle < 65 ? "cover" : "straight";
+            string hand = library.clips[selectedClip].hand;
+
+            if (hand == "left")
+            {
+                if (shot == "pull") shot = "cut";
+                else if (shot == "cut") shot = "pull";
+                else if (shot == "cover") shot = "ondrive";
+                else if (shot == "ondrive") shot = "cover";
+            }
+
+            int index = Array.FindIndex(library.clips, c => c.id == shot && c.hand == hand);
+            if (index >= 0) selectedClip = index;
+            Swing();
+            gesture = Vector2.zero;
+            mouseDistance = 0;
+        }
+
+        if (mouseDistance <= 2 && Time.time - lastMove > 0.2f)
+        {
+            gesture = Vector2.zero;
+            mouseDistance = 0;
+        }
+    }
+
+    void FixedUpdate()
+    {
+        if (library != null && playing)
+        {
+            clock += Time.fixedDeltaTime;
+            var samples = library.clips[selectedClip].samples;
+            int i = Mathf.Min(Mathf.FloorToInt(clock / 0.01f), samples.Length - 1);
+            ApplySample(samples[i]);
+            if (i == samples.Length - 1) playing = false;
+        }
+
+        if (creasePhysics != null && !creasePhysics.isDead)
+        {
+            creasePhysics.Step(Time.fixedDeltaTime);
+            if (ballObj != null)
+            {
+                ballObj.transform.position = creasePhysics.position;
+            }
+        }
+    }
+
+    void OnGUI()
+    {
+        GUILayout.BeginArea(new Rect(15, 15, Mathf.Min(850, Screen.width - 30), 125), GUI.skin.box);
+        GUILayout.Label("CREASE · Unity Parity Engine & Visual Rig");
+        GUILayout.Label(status);
+
+        if (library != null)
+        {
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Previous Shot")) { selectedClip = (selectedClip + library.clips.Length - 1) % library.clips.Length; Swing(); }
+            if (GUILayout.Button("Play Motion [Enter]")) Swing();
+            if (GUILayout.Button("Next Shot")) { selectedClip = (selectedClip + 1) % library.clips.Length; Swing(); }
+            if (GUILayout.Button("Bowl Delivery [Space]")) BowlDelivery();
+            trackpad = GUILayout.Toggle(trackpad, "Two-finger scroll");
+            GUILayout.EndHorizontal();
+        }
+
+        GUILayout.Label("Mouse Gesture Engine: Left = Pull, Right = Cut, Up = Drive. Obstacle & Pitch physics active.");
+        GUILayout.EndArea();
+    }
+}

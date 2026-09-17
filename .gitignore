@@ -1,3 +1,12 @@
 work/
 outputs/
 .sites-runtime/
+unity/**/Library/
+unity/**/Temp/
+unity/**/Logs/
+unity/**/obj/
+unity/**/UserSettings/
+unity/**/Builds/
+unity/**/*.csproj
+unity/**/*.sln
+unity/**/*.slnx

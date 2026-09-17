@@ -13,3 +13,7 @@ Run coarse fitting with `node tools/calibrate.mjs measurements.json`. The input 
 The browser implementation uses a 1 ms fixed-step solver with explicit, uncalibrated priors. It is a nets vertical slice, not a complete official cricket match or the full research specification.
 
 Three.js r170 is vendored under its included MIT license.
+
+## Unity migration project
+
+The separate native setup is in [unity/README.md](unity/README.md). Use `unity/Open-CREASE.cmd` to open it. `node tools/export-unity.mjs` refreshes the explicit one-way motion-data bridge from the browser; native physics and match logic are not automatically synchronized.
