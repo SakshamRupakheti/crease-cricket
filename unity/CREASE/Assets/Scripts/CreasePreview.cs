@@ -25,6 +25,9 @@ public class CreasePreview : MonoBehaviour
     private string status = "CREASE Unity — Full Parity Engine & Visual Rig Active";
 
     private Material willowMat, whiteMat, greenMat, pitchMat;
+    private Transform bowlerRoot, bowlingArm, bowlingHand;
+    private float deliveryClock = -1f;
+    private bool deliveryReleased;
 
     private Material CreateMaterial(Color color)
     {
@@ -74,6 +77,8 @@ public class CreasePreview : MonoBehaviour
             }
         }
 
+        BuildBowler();
+
         // Lighting
         var light = new GameObject("Sun").AddComponent<Light>();
         light.type = LightType.Directional;
@@ -103,6 +108,22 @@ public class CreasePreview : MonoBehaviour
         ApplySample(library.clips[0].samples[0]);
     }
 
+    private void BuildBowler()
+    {
+        bowlerRoot = new GameObject("Bowler Action Rig").transform;
+        bowlerRoot.position = new Vector3(0, 0, 18.6f);
+        var body = Shape("Bowler Body", PrimitiveType.Capsule, bowlerRoot.position + new Vector3(0, 1.0f, 0), new Vector3(.42f, 1.0f, .30f), greenMat);
+        body.transform.SetParent(bowlerRoot, true);
+        var shoulder = Shape("Bowler Shoulder", PrimitiveType.Sphere, bowlerRoot.position + new Vector3(0, 1.65f, 0), new Vector3(.62f, .28f, .34f), greenMat);
+        shoulder.transform.SetParent(bowlerRoot, true);
+        var head = Shape("Bowler Head", PrimitiveType.Sphere, bowlerRoot.position + new Vector3(0, 2.05f, 0), new Vector3(.25f, .30f, .25f), whiteMat);
+        head.transform.SetParent(bowlerRoot, true);
+        bowlingArm = Shape("Bowler Bowling Arm", PrimitiveType.Capsule, bowlerRoot.position + new Vector3(.42f, 1.55f, -.05f), new Vector3(.11f, .52f, .11f), whiteMat, false).transform;
+        bowlingArm.SetParent(bowlerRoot, true);
+        bowlingHand = Shape("Bowler Ball Hand", PrimitiveType.Sphere, bowlerRoot.position + new Vector3(.42f, 1.05f, -.10f), new Vector3(.13f, .13f, .13f), whiteMat, false).transform;
+        bowlingHand.SetParent(bowlerRoot, true);
+    }
+
     private void ApplySample(Sample s)
     {
         Quaternion batRot = Quaternion.LookRotation(s.forward, s.up);
@@ -122,13 +143,28 @@ public class CreasePreview : MonoBehaviour
 
     private void BowlDelivery()
     {
-        Vector3 releasePos = new Vector3(0.2f, 2.1f, 18.0f);
-        Vector3 releaseVel = new Vector3(-0.1f, -1.2f, -28.0f);
-        Vector3 releaseSpin = new Vector3(20f, 0f, 10f);
-        Vector3 seamNormal = new Vector3(0.1f, 0f, 0.99f);
+        deliveryClock = 0f;
+        deliveryReleased = false;
+        creasePhysics.isDead = true;
+        status = "Bowler loading — read the arm and wrist, then choose your shot";
+    }
 
-        creasePhysics.ReleaseBall(releasePos, releaseVel, releaseSpin, seamNormal);
-        status = "Ball Delivered — Dynamic pitch wear & aerodynamics active!";
+    private void AnimateDelivery(float dt)
+    {
+        if (deliveryClock < 0 || bowlerRoot == null) return;
+        deliveryClock += dt;
+        float t = Mathf.Clamp01(deliveryClock / 0.95f);
+        float lift = Mathf.Sin(t * Mathf.PI);
+        bowlingArm.localRotation = Quaternion.Euler(-35f - lift * 125f, 0f, -25f + lift * 95f);
+        bowlingHand.localPosition = new Vector3(.42f + lift * .12f, 1.08f + lift * .65f, -.10f - lift * .35f);
+        if (!deliveryReleased && deliveryClock >= .72f)
+        {
+            deliveryReleased = true;
+            Vector3 releasePos = bowlerRoot.position + new Vector3(.30f, 2.18f, -.48f);
+            creasePhysics.ReleaseBall(releasePos, new Vector3(-.1f, -1.2f, -28f), new Vector3(20f, 0f, 10f), new Vector3(.1f, 0f, .99f));
+            status = "Ball released — track seam, bounce and wrist angle";
+        }
+        if (deliveryClock > 1.4f) deliveryClock = -1f;
     }
 
     void Update()
@@ -176,6 +212,7 @@ public class CreasePreview : MonoBehaviour
 
     void FixedUpdate()
     {
+        AnimateDelivery(Time.fixedDeltaTime);
         if (library != null && playing)
         {
             clock += Time.fixedDeltaTime;
