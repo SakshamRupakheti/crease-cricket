@@ -175,6 +175,12 @@ public class CreasePreview : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Return)) Swing();
 
         Vector2 delta = trackpad ? Input.mouseScrollDelta : new Vector2(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y"));
+        // Mobile: the same swipe classifier drives shots; no shot hint is shown before release.
+        if (Input.touchCount > 0)
+        {
+            Touch touch = Input.GetTouch(0);
+            if (touch.phase == TouchPhase.Moved) delta = touch.deltaPosition * 0.018f;
+        }
         if (delta.sqrMagnitude > 0.01f && Input.mousePosition.y < Screen.height - 125)
         {
             gesture += delta;
