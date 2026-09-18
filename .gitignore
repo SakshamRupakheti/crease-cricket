@@ -1,6 +1,7 @@
 work/
 outputs/
 .sites-runtime/
+.tools/
 unity/**/Library/
 unity/**/Temp/
 unity/**/Logs/
