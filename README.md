@@ -17,3 +17,9 @@ Three.js r170 is vendored under its included MIT license.
 ## Unity migration project
 
 The separate native setup is in [unity/README.md](unity/README.md). Use `unity/Open-CREASE.cmd` to open it. `node tools/export-unity.mjs` refreshes the explicit one-way motion-data bridge from the browser; native physics and match logic are not automatically synchronized.
+
+## License
+
+Original source code in this repository is licensed under the [MIT license](LICENSE). Third-party libraries, models, datasets, and assets retain their own licenses and attribution.
+
+Keep the [Three.js notice](dist/THREE-LICENSE.txt) and [asset attributions](dist/assets/ASSET-LICENSES.txt) with redistributed copies of those components.
